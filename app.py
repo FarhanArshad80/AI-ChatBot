@@ -1,20 +1,37 @@
 import os
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
+# 1. Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
+# 2. Initialize the Gemini Client
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-model_id = "gemini-3-flash-preview"  # use stable model for API serving
+model_id = "gemini-3-flash-preview" 
 
-# Store history in memory (per server session)
+# Store history in memory
 history = []
+
+# 3. Updated System Instruction to enforce plain text formatting
+PLM_SYSTEM_PROMPT = (
+    "You are an expert Product Lifecycle Management (PLM) Analyst. "
+   
+    " Ensure the output is clean, professional plain text. "
+    "\nAnalyze these stages: "
+    "1. RESEARCH AND DEVELOPMENT: Core innovation and problem solved. "
+    "2. MANUFACTURING ACTIVITIES: Materials and production methods. "
+    "3. FINANCIAL ACTIVITIES: Price point and target market. "
+    "4. EFFECTIVE INFORMATION SYSTEM: Data and feedback loops. "
+    "5. MARKETING AND PROMOTION: Branding and selling points. "
+    "6. PRODUCT EVOLUTION: Suggested future improvements."
+)
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -24,7 +41,7 @@ def chat():
     if not user_input:
         return jsonify({"error": "Empty message"}), 400
 
-    # Build contents exactly like your original code
+    # Combine history with the new user message
     current_contents = history + [
         types.Content(role="user", parts=[types.Part.from_text(text=user_input)])
     ]
@@ -32,19 +49,26 @@ def chat():
     full_response = ""
 
     try:
-        # Stream and collect response (same logic as your code)
-        print(client)
+        # Generate content
         for chunk in client.models.generate_content_stream(
-            model=model_id, contents=current_contents
+            model=model_id, 
+            contents=current_contents,
+            config=types.GenerateContentConfig(
+                system_instruction=PLM_SYSTEM_PROMPT,
+                temperature=0.7
+            )
         ):
             if chunk.text:
                 full_response += chunk.text
 
-        # Update history exactly like your original code
-        history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
-        history.append(types.Content(role="model", parts=[types.Part.from_text(text=full_response)]))
+        # Secondary cleanup: Ensure no stray Markdown markers escaped the prompt instructions
+        clean_response = re.sub(r'[*#]', '', full_response)
 
-        return jsonify({"reply": full_response})
+        # Update history with the clean version
+        history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
+        history.append(types.Content(role="model", parts=[types.Part.from_text(text=clean_response)]))
+
+        return jsonify({"reply": clean_response})
 
     except Exception as e:
         if "429" in str(e):
