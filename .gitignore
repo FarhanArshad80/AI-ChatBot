@@ -1,0 +1,16 @@
+# API Keys and Secrets
+.env
+
+# Python folders
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# IDE files
+.vscode/
+.idea/

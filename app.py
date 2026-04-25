@@ -5,6 +5,8 @@ from flask_cors import CORS
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from supabase import create_client, Client
+from datetime import datetime
 
 # 1. Load environment variables
 load_dotenv()
@@ -14,16 +16,21 @@ CORS(app)
 
 # 2. Initialize the Gemini Client
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-model_id = "gemini-3-flash-preview" 
+model_id = "gemini-2.5-flash-lite"
+
+# 3. Initialize Supabase Client
+supabase: Client = create_client(
+    os.getenv("SUPABASE_URL"),
+    os.getenv("SUPABASE_KEY")
+)
 
 # Store history in memory
 history = []
 
-# 3. Updated System Instruction to enforce plain text formatting
+# 4. System Prompt
 PLM_SYSTEM_PROMPT = (
     "You are an expert Product Lifecycle Management (PLM) Analyst. "
-   
-    " Ensure the output is clean, professional plain text. "
+    "Ensure the output is clean, professional plain text. "
     "\nAnalyze these stages: "
     "1. RESEARCH AND DEVELOPMENT: Core innovation and problem solved. "
     "2. MANUFACTURING ACTIVITIES: Materials and production methods. "
@@ -33,6 +40,7 @@ PLM_SYSTEM_PROMPT = (
     "6. PRODUCT EVOLUTION: Suggested future improvements."
 )
 
+
 @app.route("/chat", methods=["POST"])
 def chat():
     global history
@@ -41,7 +49,6 @@ def chat():
     if not user_input:
         return jsonify({"error": "Empty message"}), 400
 
-    # Combine history with the new user message
     current_contents = history + [
         types.Content(role="user", parts=[types.Part.from_text(text=user_input)])
     ]
@@ -49,9 +56,8 @@ def chat():
     full_response = ""
 
     try:
-        # Generate content
         for chunk in client.models.generate_content_stream(
-            model=model_id, 
+            model=model_id,
             contents=current_contents,
             config=types.GenerateContentConfig(
                 system_instruction=PLM_SYSTEM_PROMPT,
@@ -61,12 +67,18 @@ def chat():
             if chunk.text:
                 full_response += chunk.text
 
-        # Secondary cleanup: Ensure no stray Markdown markers escaped the prompt instructions
         clean_response = re.sub(r'[*#]', '', full_response)
 
-        # Update history with the clean version
+        # Update in-memory history
         history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
         history.append(types.Content(role="model", parts=[types.Part.from_text(text=clean_response)]))
+
+        # Save to Supabase
+        supabase.table("chat_history").insert({
+            "user_message": user_input,
+            "bot_response": clean_response,
+            "created_at": datetime.utcnow().isoformat()
+        }).execute()
 
         return jsonify({"reply": clean_response})
 
@@ -78,11 +90,36 @@ def chat():
         else:
             return jsonify({"error": str(e)}), 500
 
+
 @app.route("/reset", methods=["POST"])
 def reset():
     global history
     history = []
     return jsonify({"status": "History cleared"})
+
+
+@app.route("/admin/history", methods=["GET"])
+def admin_history():
+    """Admin endpoint to fetch all chat history from Supabase"""
+    try:
+        response = supabase.table("chat_history") \
+            .select("*") \
+            .order("created_at", desc=True) \
+            .execute()
+        return jsonify({"history": response.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/history/<int:record_id>", methods=["DELETE"])
+def delete_history(record_id):
+    """Delete a specific chat record"""
+    try:
+        supabase.table("chat_history").delete().eq("id", record_id).execute()
+        return jsonify({"status": "Deleted"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
