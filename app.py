@@ -41,6 +41,10 @@ PLM_SYSTEM_PROMPT = (
 )
 
 
+# ─────────────────────────────────────────────
+#  CHAT ROUTES
+# ─────────────────────────────────────────────
+
 @app.route("/chat", methods=["POST"])
 def chat():
     global history
@@ -98,9 +102,13 @@ def reset():
     return jsonify({"status": "History cleared"})
 
 
+# ─────────────────────────────────────────────
+#  ADMIN CRUD ROUTES
+# ─────────────────────────────────────────────
+
 @app.route("/admin/history", methods=["GET"])
 def admin_history():
-    """Admin endpoint to fetch all chat history from Supabase"""
+    """READ — Fetch all chat history from Supabase"""
     try:
         response = supabase.table("chat_history") \
             .select("*") \
@@ -111,12 +119,72 @@ def admin_history():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/admin/history", methods=["POST"])
+def create_history():
+    """CREATE — Insert a new chat record manually"""
+    try:
+        body = request.json or {}
+        user_message = body.get("user_message", "").strip()
+        bot_response  = body.get("bot_response", "").strip()
+
+        if not user_message or not bot_response:
+            return jsonify({"error": "user_message and bot_response are required"}), 400
+
+        result = supabase.table("chat_history").insert({
+            "user_message": user_message,
+            "bot_response": bot_response,
+            "created_at": datetime.utcnow().isoformat()
+        }).execute()
+
+        return jsonify({"status": "Created", "record": result.data}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/history/<int:record_id>", methods=["PUT"])
+def update_history(record_id):
+    """UPDATE — Edit an existing chat record"""
+    try:
+        body = request.json or {}
+        updates = {}
+
+        if "user_message" in body:
+            updates["user_message"] = body["user_message"].strip()
+        if "bot_response" in body:
+            updates["bot_response"] = body["bot_response"].strip()
+
+        if not updates:
+            return jsonify({"error": "No fields to update"}), 400
+
+        result = supabase.table("chat_history") \
+            .update(updates) \
+            .eq("id", record_id) \
+            .execute()
+
+        return jsonify({"status": "Updated", "record": result.data})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/admin/history/<int:record_id>", methods=["DELETE"])
 def delete_history(record_id):
-    """Delete a specific chat record"""
+    """DELETE — Remove a specific chat record"""
     try:
         supabase.table("chat_history").delete().eq("id", record_id).execute()
         return jsonify({"status": "Deleted"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/history/all", methods=["DELETE"])
+def delete_all_history():
+    """DELETE ALL — Remove every chat record (use with caution)"""
+    try:
+        # Supabase requires a condition; neq('id', 0) matches everything
+        supabase.table("chat_history").delete().neq("id", 0).execute()
+        return jsonify({"status": "All records deleted"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

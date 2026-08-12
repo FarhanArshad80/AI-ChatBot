@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PLM Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d0f;
+      --surface: #141416;
+      --surface2: #1c1c1f;
+      --border: #2a2a2f;
+      --accent: #7c6dfa;
+      --accent2: #fa6d8f;
+      --accent3: #6dfabc;
+      --text: #e8e8f0;
+      --muted: #6b6b80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      height: 58px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .topbar-brand {
+      font-size: 1rem; font-weight: 800;
+      letter-spacing: 0.08em;
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:.5; transform:scale(.8); }
+    }
+
+    .topbar-actions { display: flex; gap: 8px; }
+
+    .btn {
+      padding: 7px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { opacity: 0.85; }
+    .btn.danger { color: var(--accent2); border-color: var(--accent2); }
+    .btn.danger:hover { background: rgba(250,109,143,0.12); }
+    .btn.success { color: var(--accent3); border-color: var(--accent3); }
+    .btn.success:hover { background: rgba(109,250,188,0.1); }
+
+    /* ── LAYOUT ── */
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: 260px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sidebar-header h3 {
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .new-chat-btn {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .new-chat-btn:hover { opacity: 0.85; }
+
+    .session-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .session-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+      margin-bottom: 4px;
+    }
+
+    .session-item:hover { background: var(--surface2); border-color: var(--border); }
+    .session-item.active { background: var(--surface2); border-color: var(--accent); }
+
+    .session-item .s-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-item .s-meta {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+      margin-top: 3px;
+    }
+
+    /* ── MAIN CONTENT ── */
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .content-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 12px;
+    }
+
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      max-width: 380px;
+    }
+
+    .search-wrap input {
+      width: 100%;
+      padding: 8px 14px 8px 36px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.82rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-wrap input:focus { border-color: var(--accent); }
+    .search-wrap input::placeholder { color: var(--muted); }
+
+    .search-icon {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .count-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    /* ── TABLE ── */
+    .table-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 28px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      text-align: left;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 14px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+      cursor: pointer;
+    }
+
+    tbody tr:hover { background: var(--surface); }
+
+    tbody td {
+      padding: 13px 14px;
+      font-size: 0.84rem;
+      vertical-align: top;
+    }
+
+    .td-id {
+      font-family: 'IBM Plex Mono', monospace;
+      color: var(--muted);
+      width: 40px;
+    }
+
+    .td-msg {
+      max-width: 260px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .td-reply {
+      max-width: 340px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--muted);
+    }
+
+    .td-time {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .td-actions { display: flex; gap: 6px; }
+
+    .action-btn {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .action-btn.edit { color: var(--accent); }
+    .action-btn.edit:hover { border-color: var(--accent); background: rgba(124,109,250,0.1); }
+    .action-btn.del  { color: var(--accent2); }
+    .action-btn.del:hover  { border-color: var(--accent2); background: rgba(250,109,143,0.1); }
+
+    /* ── MODAL ── */
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: 560px;
+      max-width: 94vw;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: modalIn 0.2s ease;
+    }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.95) translateY(10px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header h3 {
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+    }
+
+    .close-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      width: 30px; height: 30px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .close-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 7px;
+    }
+
+    .field textarea, .field input[type="text"] {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      padding: 10px 14px;
+      outline: none;
+      resize: vertical;
+      transition: border-color 0.2s;
+    }
+
+    .field textarea:focus, .field input[type="text"]:focus { border-color: var(--accent); }
+    .field textarea { min-height: 90px; }
+
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 22px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── TOAST ── */
+    .toast-wrap {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 200;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent3);
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 0.84rem;
+      font-family: 'IBM Plex Mono', monospace;
+      animation: slideIn 0.2s ease;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    .toast.err { border-left-color: var(--accent2); }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .empty-state {
+      padding: 60px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .empty-state .icon { font-size: 2.5rem; display: block; margin-bottom: 12px; }
+
+    /* ── NEW CHAT MODAL ── */
+    #new-chat-overlay .modal { width: 480px; }
+
+    .chat-type-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .chat-type-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .chat-type-card:hover, .chat-type-card.selected {
+      border-color: var(--accent);
+      background: rgba(124,109,250,0.1);
+    }
+
+    .chat-type-card .icon { font-size: 1.6rem; display: block; margin-bottom: 7px; }
+    .chat-type-card .label { font-size: 0.82rem; font-weight: 700; }
+    .chat-type-card .desc { font-size: 0.74rem; color: var(--muted); margin-top: 3px; font-family: 'IBM Plex Mono', monospace; }
+  </style>
+</head>
+<body>
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="dot"></div>
+      PLM ADMIN
+    </div>
+    <div class="topbar-actions">
+      <button class="btn" onclick="window.location.href='index%20.html'">← Chat</button>
+      <button class="btn success" onclick="loadHistory()">↻ Refresh</button>
+      <button class="btn primary" onclick="openCreate()">+ New Record</button>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h3>Sessions</h3>
+        <button class="new-chat-btn" onclick="openNewChat()">+ New Chat</button>
+      </div>
+      <div class="session-list" id="session-list">
+        <div class="session-item active">
+          <div class="s-title">All Records</div>
+          <div class="s-meta">Showing all history</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="content">
+      <div class="content-toolbar">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input id="search-input" type="text" placeholder="Search messages..." oninput="filterTable()" />
+        </div>
+        <span class="count-badge" id="count-badge">— records</span>
+        <button class="btn danger" onclick="confirmDeleteAll()">🗑 Delete All</button>
+      </div>
+
+      <div class="table-wrap">
+        <table id="records-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>User Message</th>
+              <th>Bot Response</th>
+              <th>Created At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <tr><td colspan="5"><div class="empty-state"><span class="icon">⏳</span>Loading records...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── EDIT / CREATE MODAL ── -->
+  <div class="overlay" id="edit-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Edit Record</h3>
+        <button class="close-btn" onclick="closeModal('edit-overlay')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-id" />
+        <div class="field">
+          <label>User Message</label>
+          <textarea id="edit-user" rows="4" placeholder="User's message..."></textarea>
+        </div>
+        <div class="field">
+          <label>Bot Response</label>
+          <textarea id="edit-bot" rows="6" placeholder="Bot's response..."></textarea>
+        </div>
+        <div class="field" id="edit-time-field" style="display:none">
+          <label>Created At</label>
+          <input type="text" id="edit-time" readonly style="opacity:0.5;cursor:default;" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('edit-overlay')">Cancel</button>
+        <button class="btn primary" id="modal-save-btn" onclick="saveRecord()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── NEW CHAT MODAL ── -->
+  <div class="overlay" id="new-chat-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Start New Chat Session</h3>
+        <button class="close-btn" onclick="closeModal('new-chat-overlay')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Session Type</label>
+          <div class="chat-type-grid">
+            <div class="chat-type-card selected" onclick="selectType(this,'plm')">
+              <span class="icon">🔬</span>
+              <div class="label">PLM Analysis</div>
+              <div class="desc">Full lifecycle analysis</div>
+            </div>
+            <div class="chat-type-card" onclick="selectType(this,'general')">
+              <span class="icon">💬</span>
+              <div class="label">General Chat</div>
+              <div class="desc">Open-ended conversation</div>
+            </div>
+            <div class="chat-type-card" onclick="selectType(this,'compare')">
+              <span class="icon">⚖️</span>
+              <div class="label">Product Compare</div>
+              <div class="desc">Compare two products</div>
+            </div>
+            <div class="chat-type-card" onclick="selectType(this,'report')">
+              <span class="icon">📄</span>
+              <div class="label">Report Mode</div>
+              <div class="desc">Generate a formal report</div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Initial Message (Optional)</label>
+          <textarea id="new-chat-msg" rows="3" placeholder="Type your opening message..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('new-chat-overlay')">Cancel</button>
+        <button class="btn primary" onclick="startNewChat()">Start Chat →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div class="toast-wrap" id="toast-wrap"></div>
+
+  <script>
+    const API = "http://localhost:5000";
+    let allRecords = [];
+    let selectedType = 'plm';
+    let editMode = false; // false = create, true = edit
+
+    /* ── LOAD HISTORY ── */
+    async function loadHistory() {
+      try {
+        const res = await fetch(`${API}/admin/history`);
+        const data = await res.json();
+        allRecords = data.history || [];
+        renderTable(allRecords);
+        updateCount(allRecords.length);
+        buildSidebar(allRecords);
+      } catch {
+        toast("Failed to load records", true);
+      }
+    }
+
+    function renderTable(records) {
+      const tbody = document.getElementById("table-body");
+      if (records.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><span class="icon">📭</span>No records found.</div></td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = records.map(r => `
+        <tr onclick="openEdit(${r.id})">
+          <td class="td-id">${r.id}</td>
+          <td class="td-msg">${esc(r.user_message)}</td>
+          <td class="td-reply">${esc(r.bot_response)}</td>
+          <td class="td-time">${r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</td>
+          <td class="td-actions" onclick="event.stopPropagation()">
+            <button class="action-btn edit" onclick="openEdit(${r.id})">✏ Edit</button>
+            <button class="action-btn del" onclick="deleteRecord(${r.id})">✕ Del</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function buildSidebar(records) {
+      const list = document.getElementById("session-list");
+      // Group by date
+      const groups = {};
+      records.forEach(r => {
+        const d = r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Unknown';
+        if (!groups[d]) groups[d] = [];
+        groups[d].push(r);
+      });
+
+      list.innerHTML = `
+        <div class="session-item active" onclick="showAll()">
+          <div class="s-title">All Records</div>
+          <div class="s-meta">${records.length} total</div>
+        </div>
+      `;
+
+      Object.entries(groups).forEach(([date, recs]) => {
+        const item = document.createElement("div");
+        item.className = "session-item";
+        item.innerHTML = `
+          <div class="s-title">${date}</div>
+          <div class="s-meta">${recs.length} message${recs.length !== 1 ? 's' : ''}</div>
+        `;
+        item.onclick = () => {
+          document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
+          item.classList.add('active');
+          renderTable(recs);
+          updateCount(recs.length);
+        };
+        list.appendChild(item);
+      });
+    }
+
+    function showAll() {
+      document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
+      document.querySelector('.session-item').classList.add('active');
+      renderTable(allRecords);
+      updateCount(allRecords.length);
+    }
+
+    function filterTable() {
+      const q = document.getElementById("search-input").value.toLowerCase();
+      const filtered = allRecords.filter(r =>
+        (r.user_message || '').toLowerCase().includes(q) ||
+        (r.bot_response || '').toLowerCase().includes(q)
+      );
+      renderTable(filtered);
+      updateCount(filtered.length);
+    }
+
+    function updateCount(n) {
+      document.getElementById("count-badge").textContent = `${n} record${n !== 1 ? 's' : ''}`;
+    }
+
+    /* ── CREATE ── */
+    function openCreate() {
+      editMode = false;
+      document.getElementById("modal-title").textContent = "Create New Record";
+      document.getElementById("modal-save-btn").textContent = "Create Record";
+      document.getElementById("edit-id").value = "";
+      document.getElementById("edit-user").value = "";
+      document.getElementById("edit-bot").value = "";
+      document.getElementById("edit-time-field").style.display = "none";
+      document.getElementById("edit-overlay").classList.add("open");
+    }
+
+    /* ── EDIT ── */
+    function openEdit(id) {
+      const rec = allRecords.find(r => r.id === id);
+      if (!rec) return;
+      editMode = true;
+      document.getElementById("modal-title").textContent = "Edit Record #" + id;
+      document.getElementById("modal-save-btn").textContent = "Save Changes";
+      document.getElementById("edit-id").value = id;
+      document.getElementById("edit-user").value = rec.user_message || "";
+      document.getElementById("edit-bot").value = rec.bot_response || "";
+      document.getElementById("edit-time").value = rec.created_at ? new Date(rec.created_at).toLocaleString() : '';
+      document.getElementById("edit-time-field").style.display = "block";
+      document.getElementById("edit-overlay").classList.add("open");
+    }
+
+    /* ── SAVE (create or update) ── */
+    async function saveRecord() {
+      const id = document.getElementById("edit-id").value;
+      const user_message = document.getElementById("edit-user").value.trim();
+      const bot_response = document.getElementById("edit-bot").value.trim();
+
+      if (!user_message || !bot_response) {
+        toast("Both fields are required.", true);
+        return;
+      }
+
+      try {
+        if (editMode) {
+          // UPDATE
+          await fetch(`${API}/admin/history/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_message, bot_response })
+          });
+          toast("Record updated ✓");
+        } else {
+          // CREATE
+          await fetch(`${API}/admin/history`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_message, bot_response })
+          });
+          toast("Record created ✓");
+        }
+        closeModal("edit-overlay");
+        loadHistory();
+      } catch {
+        toast("Save failed.", true);
+      }
+    }
+
+    /* ── DELETE ── */
+    async function deleteRecord(id) {
+      if (!confirm(`Delete record #${id}?`)) return;
+      try {
+        await fetch(`${API}/admin/history/${id}`, { method: "DELETE" });
+        toast("Record deleted");
+        loadHistory();
+      } catch {
+        toast("Delete failed.", true);
+      }
+    }
+
+    async function confirmDeleteAll() {
+      if (!confirm("Delete ALL records? This cannot be undone.")) return;
+      try {
+        await fetch(`${API}/admin/history/all`, { method: "DELETE" });
+        toast("All records deleted");
+        loadHistory();
+      } catch {
+        toast("Failed to delete all.", true);
+      }
+    }
+
+    /* ── NEW CHAT ── */
+    function openNewChat() {
+      document.getElementById("new-chat-msg").value = "";
+      document.getElementById("new-chat-overlay").classList.add("open");
+    }
+
+    function selectType(el, type) {
+      document.querySelectorAll('.chat-type-card').forEach(c => c.classList.remove('selected'));
+      el.classList.add('selected');
+      selectedType = type;
+    }
+
+    async function startNewChat() {
+      const msg = document.getElementById("new-chat-msg").value.trim();
+
+      // Reset backend session
+      await fetch(`${API}/reset`, { method: "POST" });
+
+      closeModal("new-chat-overlay");
+
+      if (msg) {
+        // Optionally post the first message immediately
+        try {
+          await fetch(`${API}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: msg })
+          });
+          toast("New chat started with initial message ✓");
+          loadHistory();
+        } catch {
+          toast("Chat started, but initial message failed.", true);
+        }
+      } else {
+        toast("New chat session started ✓");
+      }
+    }
+
+    /* ── MODAL HELPERS ── */
+    function closeModal(id) {
+      document.getElementById(id).classList.remove("open");
+    }
+
+    document.querySelectorAll('.overlay').forEach(o => {
+      o.addEventListener('click', e => {
+        if (e.target === o) o.classList.remove('open');
+      });
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') document.querySelectorAll('.overlay').forEach(o => o.classList.remove('open'));
+    });
+
+    /* ── TOAST ── */
+    function toast(msg, err = false) {
+      const wrap = document.getElementById("toast-wrap");
+      const el = document.createElement("div");
+      el.className = "toast" + (err ? " err" : "");
+      el.textContent = msg;
+      wrap.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    function esc(s = "") {
+      return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    // Init
+    loadHistory();
+  </script>
+</body>
+</html>
