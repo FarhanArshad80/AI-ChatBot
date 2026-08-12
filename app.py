@@ -30,7 +30,7 @@ history = []
 # 4. System Prompt
 PLM_SYSTEM_PROMPT = (
     "You are an expert Product Lifecycle Management (PLM) Analyst. "
-    "Ensure the output is clean, professional plain text. "
+    "Ensure the output is clean, professional plain text and simple"
     "\nAnalyze these stages: "
     "1. RESEARCH AND DEVELOPMENT: Core innovation and problem solved. "
     "2. MANUFACTURING ACTIVITIES: Materials and production methods. "
