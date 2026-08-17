@@ -1,6 +1,6 @@
 # PTHYONGEMNI Web Application
 
-A Flask-based web application featuring an admin panel, dynamic HTML views, environment-based configuration, and virtual environment setup.
+A Flask-based web application featuring an admin panel, dynamic HTML views, environment-based configuration, and virtual environment setup and realtime chat with the modals.
 
 ---
 
