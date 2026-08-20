@@ -6,7 +6,7 @@ A Flask-based web application featuring an admin panel, dynamic HTML views, envi
 
 ## 📁 Project Structure
 
-```text
+text
 PTHYONGEMNI/
 ├── .agents/             # Agent tools or automation scripts
 ├── .vibe/               # Project configuration/meta files
