@@ -42,6 +42,21 @@ PLM_SYSTEM_PROMPT = (
 
 
 # ─────────────────────────────────────────────
+#  HEALTH CHECK
+# ─────────────────────────────────────────────
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Lightweight probe so the UI can tell whether the backend is reachable."""
+    return jsonify({
+        "status": "ok",
+        "model": model_id,
+        "turns_in_memory": len(history),
+        "checked_at": datetime.utcnow().isoformat()
+    })
+
+
+# ─────────────────────────────────────────────
 #  CHAT ROUTES
 # ─────────────────────────────────────────────
 

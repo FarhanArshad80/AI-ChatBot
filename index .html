@@ -53,6 +53,15 @@
       display: inline-block;
       box-shadow: 0 0 6px #1D9E75;
     }
+    .dot.offline {
+      background: #C0504D;
+      box-shadow: 0 0 6px #C0504D;
+    }
+    .dot.checking {
+      background: #7c7ca0;
+      box-shadow: none;
+    }
+
     .reset-btn {
       font-size: 12px; font-weight: 500;
       background: transparent;
@@ -213,7 +222,10 @@
       </div>
       <div>
         <div class="header-title">Gemini Assistant</div>
-        <div class="header-sub"><span class="dot"></span> Online & ready</div>
+        <div class="header-sub">
+          <span class="dot checking" id="status-dot"></span>
+          <span id="status-text">Checking backend…</span>
+        </div>
       </div>
     </div>
     <button class="reset-btn" onclick="resetChat()">Clear chat</button>
@@ -262,7 +274,26 @@
   const input = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
 
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+
   document.getElementById('init-time').textContent = now();
+
+  // Ping the backend so the header reflects the real connection state
+  async function checkBackend() {
+    try {
+      const res = await fetch('http://localhost:5000/health');
+      if (!res.ok) throw new Error('bad status');
+      const data = await res.json();
+      statusDot.className = 'dot';
+      statusText.textContent = `Online · ${data.model || 'ready'}`;
+    } catch (e) {
+      statusDot.className = 'dot offline';
+      statusText.textContent = 'Backend offline';
+    }
+  }
+
+  checkBackend();
 
   function now() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
