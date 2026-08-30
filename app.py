@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from datetime import datetime
+from datetime import datetime, timezone
 
 # 1. Load environment variables
 load_dotenv()
@@ -32,6 +32,16 @@ history = []
 # Keep a rolling window of the most recent exchanges instead; the full record
 # still lives in Supabase.
 MAX_HISTORY_TURNS = 12
+
+
+def utc_now_iso():
+    """Current UTC time as an ISO 8601 string.
+
+    datetime.utcnow() is deprecated from Python 3.12 and returns a naive
+    value, which drops the offset and leaves stored timestamps ambiguous.
+    """
+    return datetime.now(timezone.utc).isoformat()
+
 
 # 4. System Prompt
 PLM_SYSTEM_PROMPT = (
@@ -59,7 +69,7 @@ def health():
         "model": model_id,
         "turns_in_memory": len(history) // 2,
         "max_turns": MAX_HISTORY_TURNS,
-        "checked_at": datetime.utcnow().isoformat()
+        "checked_at": utc_now_iso()
     })
 
 
@@ -106,7 +116,7 @@ def chat():
         supabase.table("chat_history").insert({
             "user_message": user_input,
             "bot_response": clean_response,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": utc_now_iso()
         }).execute()
 
         return jsonify({"reply": clean_response})
@@ -158,7 +168,7 @@ def create_history():
         result = supabase.table("chat_history").insert({
             "user_message": user_message,
             "bot_response": bot_response,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": utc_now_iso()
         }).execute()
 
         return jsonify({"status": "Created", "record": result.data}), 201
