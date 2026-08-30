@@ -27,6 +27,12 @@ supabase: Client = create_client(
 # Store history in memory
 history = []
 
+# Every past turn is replayed to the model on each request, so an unbounded
+# history quietly grows the prompt (and its cost) for the whole session.
+# Keep a rolling window of the most recent exchanges instead; the full record
+# still lives in Supabase.
+MAX_HISTORY_TURNS = 12
+
 # 4. System Prompt
 PLM_SYSTEM_PROMPT = (
     "You are an expert Product Lifecycle Management (PLM) Analyst. "
@@ -51,7 +57,8 @@ def health():
     return jsonify({
         "status": "ok",
         "model": model_id,
-        "turns_in_memory": len(history),
+        "turns_in_memory": len(history) // 2,
+        "max_turns": MAX_HISTORY_TURNS,
         "checked_at": datetime.utcnow().isoformat()
     })
 
@@ -88,9 +95,12 @@ def chat():
 
         clean_response = re.sub(r'[*#]', '', full_response)
 
-        # Update in-memory history
+        # Update in-memory history, dropping the oldest turns once the
+        # window is full. Trimming in whole pairs keeps user/model roles
+        # alternating, which the API expects.
         history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
         history.append(types.Content(role="model", parts=[types.Part.from_text(text=clean_response)]))
+        del history[:-2 * MAX_HISTORY_TURNS]
 
         # Save to Supabase
         supabase.table("chat_history").insert({
