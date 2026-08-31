@@ -112,14 +112,21 @@ def chat():
         history.append(types.Content(role="model", parts=[types.Part.from_text(text=clean_response)]))
         del history[:-2 * MAX_HISTORY_TURNS]
 
-        # Save to Supabase
-        supabase.table("chat_history").insert({
-            "user_message": user_input,
-            "bot_response": clean_response,
-            "created_at": utc_now_iso()
-        }).execute()
+        # Save to Supabase. The model has already answered at this point, so a
+        # storage outage should cost the transcript, not the reply — log it
+        # and hand the answer back either way.
+        try:
+            supabase.table("chat_history").insert({
+                "user_message": user_input,
+                "bot_response": clean_response,
+                "created_at": utc_now_iso()
+            }).execute()
+            saved = True
+        except Exception as storage_error:
+            app.logger.warning("Chat not saved to Supabase: %s", storage_error)
+            saved = False
 
-        return jsonify({"reply": clean_response})
+        return jsonify({"reply": clean_response, "saved": saved})
 
     except Exception as e:
         if "429" in str(e):
