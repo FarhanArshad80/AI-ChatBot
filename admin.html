@@ -515,6 +515,7 @@
           <input id="search-input" type="text" placeholder="Search messages..." oninput="filterTable()" />
         </div>
         <span class="count-badge" id="count-badge">— records</span>
+        <button class="btn" onclick="exportCsv()">⬇ Export CSV</button>
         <button class="btn danger" onclick="confirmDeleteAll()">🗑 Delete All</button>
       </div>
 
@@ -704,6 +705,25 @@
       );
       renderTable(filtered);
       updateCount(filtered.length);
+    }
+
+    /* ── EXPORT ── */
+    // The search term rides along, so the file matches the rows on screen
+    // rather than quietly handing over the whole table. The download itself
+    // is a plain navigation — the endpoint sends it as an attachment, so
+    // the page stays where it is.
+    function exportCsv() {
+      const q = document.getElementById("search-input").value.trim();
+
+      if (allRecords.length === 0) {
+        toast("Nothing to export yet", true);
+        return;
+      }
+
+      const url = `${API}/admin/history/export${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+
+      window.location.href = url;
+      toast(q ? `Exporting records matching "${q}"` : "Exporting all records");
     }
 
     function updateCount(n) {

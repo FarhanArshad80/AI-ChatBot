@@ -1,6 +1,8 @@
+import csv
+import io
 import os
 import re
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from google import genai
 from google.genai import types
@@ -157,6 +159,61 @@ def admin_history():
             .order("created_at", desc=True) \
             .execute()
         return jsonify({"history": response.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/history/export", methods=["GET"])
+def export_history():
+    """EXPORT — the transcript as a CSV file.
+
+    The admin table is for reading a few records; anything past that —
+    handing the log to someone, keeping a copy off Supabase, opening it in a
+    spreadsheet — wants a file. An optional ?q= filters on the same terms
+    the search box uses, so what is on screen is what comes down.
+    """
+    try:
+        query = request.args.get("q", "").strip().lower()
+
+        response = supabase.table("chat_history") \
+            .select("*") \
+            .order("created_at", desc=True) \
+            .execute()
+
+        records = response.data or []
+
+        if query:
+            records = [
+                record for record in records
+                if query in (record.get("user_message") or "").lower()
+                or query in (record.get("bot_response") or "").lower()
+            ]
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["id", "created_at", "user_message", "bot_response"])
+
+        # csv handles the quoting. Replies routinely contain commas, quotes
+        # and newlines, and hand-joining these fields would tear a single
+        # answer across several rows.
+        for record in records:
+            writer.writerow([
+                record.get("id", ""),
+                record.get("created_at", ""),
+                record.get("user_message", ""),
+                record.get("bot_response", ""),
+            ])
+
+        filename = f"plm-chat-history-{datetime.now(timezone.utc):%Y%m%d}.csv"
+
+        # utf-8-sig: without the BOM, Excel reads a UTF-8 CSV as the local
+        # code page and mangles anything outside ASCII.
+        return Response(
+            buffer.getvalue().encode("utf-8-sig"),
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
