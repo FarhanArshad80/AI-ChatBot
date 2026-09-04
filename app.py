@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import os
 import re
 from flask import Flask, request, jsonify, Response
@@ -60,6 +61,83 @@ PLM_SYSTEM_PROMPT = (
 
 
 # ─────────────────────────────────────────────
+#  MODEL PLUMBING
+# ─────────────────────────────────────────────
+
+def clean_text(text):
+    """Strip the markdown emphasis the system prompt already asks it to skip.
+
+    Applied per character, so running it on one streamed piece gives the
+    same result as running it on the whole answer at the end.
+    """
+    return re.sub(r"[*#]", "", text)
+
+
+def friendly_error(error):
+    """Turn a provider exception into something worth showing, plus a status."""
+    text = str(error)
+
+    if "429" in text:
+        return "Quota reached. Try again later.", 429
+    if "404" in text:
+        return f"Model '{model_id}' not available.", 404
+
+    return text, 500
+
+
+def stream_reply(user_input):
+    """Yield the model's answer in the pieces it arrives in."""
+    contents = history + [
+        types.Content(role="user", parts=[types.Part.from_text(text=user_input)])
+    ]
+
+    for chunk in client.models.generate_content_stream(
+        model=model_id,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            system_instruction=PLM_SYSTEM_PROMPT,
+            temperature=0.7
+        )
+    ):
+        if chunk.text:
+            yield chunk.text
+
+
+def remember_turn(user_input, reply):
+    """Record one exchange in memory and in Supabase.
+
+    Trimming in whole pairs keeps user/model roles alternating, which the API
+    expects. The model has already answered by the time this runs, so a
+    storage outage costs the transcript, not the reply.
+    """
+    global history
+
+    history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
+    history.append(types.Content(role="model", parts=[types.Part.from_text(text=reply)]))
+    del history[:-2 * MAX_HISTORY_TURNS]
+
+    try:
+        supabase.table("chat_history").insert({
+            "user_message": user_input,
+            "bot_response": reply,
+            "created_at": utc_now_iso()
+        }).execute()
+        return True
+    except Exception as storage_error:
+        app.logger.warning("Chat not saved to Supabase: %s", storage_error)
+        return False
+
+
+def sse(payload):
+    """Frame one server-sent event.
+
+    The blank line is the frame terminator — without it the browser holds the
+    event open and nothing arrives until the next one lands.
+    """
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+# ─────────────────────────────────────────────
 #  HEALTH CHECK
 # ─────────────────────────────────────────────
 
@@ -81,62 +159,64 @@ def health():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    global history
-
+    """One request, one whole answer. Kept for callers that cannot stream."""
     user_input = request.json.get("message", "").strip()
     if not user_input:
         return jsonify({"error": "Empty message"}), 400
 
-    current_contents = history + [
-        types.Content(role="user", parts=[types.Part.from_text(text=user_input)])
-    ]
-
-    full_response = ""
-
     try:
-        for chunk in client.models.generate_content_stream(
-            model=model_id,
-            contents=current_contents,
-            config=types.GenerateContentConfig(
-                system_instruction=PLM_SYSTEM_PROMPT,
-                temperature=0.7
-            )
-        ):
-            if chunk.text:
-                full_response += chunk.text
+        reply = clean_text("".join(stream_reply(user_input)))
+        saved = remember_turn(user_input, reply)
 
-        clean_response = re.sub(r'[*#]', '', full_response)
-
-        # Update in-memory history, dropping the oldest turns once the
-        # window is full. Trimming in whole pairs keeps user/model roles
-        # alternating, which the API expects.
-        history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
-        history.append(types.Content(role="model", parts=[types.Part.from_text(text=clean_response)]))
-        del history[:-2 * MAX_HISTORY_TURNS]
-
-        # Save to Supabase. The model has already answered at this point, so a
-        # storage outage should cost the transcript, not the reply — log it
-        # and hand the answer back either way.
-        try:
-            supabase.table("chat_history").insert({
-                "user_message": user_input,
-                "bot_response": clean_response,
-                "created_at": utc_now_iso()
-            }).execute()
-            saved = True
-        except Exception as storage_error:
-            app.logger.warning("Chat not saved to Supabase: %s", storage_error)
-            saved = False
-
-        return jsonify({"reply": clean_response, "saved": saved})
+        return jsonify({"reply": reply, "saved": saved})
 
     except Exception as e:
-        if "429" in str(e):
-            return jsonify({"error": "Quota reached. Try again later."}), 429
-        elif "404" in str(e):
-            return jsonify({"error": f"Model '{model_id}' not available."}), 404
-        else:
-            return jsonify({"error": str(e)}), 500
+        message, status = friendly_error(e)
+        return jsonify({"error": message}), status
+
+
+@app.route("/chat/stream", methods=["POST"])
+def chat_stream():
+    """The same answer, sent as it is written.
+
+    A six-stage PLM analysis takes long enough that a spinner is all anyone
+    sees for most of it. The model already arrives in pieces — this stops
+    holding them until the last one lands.
+
+    The message is read here rather than inside the generator: by the time
+    Flask starts consuming that generator the request context is gone.
+    """
+    user_input = request.json.get("message", "").strip()
+    if not user_input:
+        return jsonify({"error": "Empty message"}), 400
+
+    def events():
+        pieces = []
+
+        try:
+            for piece in stream_reply(user_input):
+                pieces.append(piece)
+                yield sse({"delta": clean_text(piece)})
+        except Exception as e:
+            message, _ = friendly_error(e)
+            # The status line went out with the first byte, so a failure
+            # halfway through has to be reported inside the stream.
+            yield sse({"error": message})
+            return
+
+        saved = remember_turn(user_input, clean_text("".join(pieces)))
+        yield sse({"done": True, "saved": saved})
+
+    return Response(
+        events(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Tells nginx not to sit on the response until it is complete,
+            # which would undo the whole point of streaming it.
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.route("/reset", methods=["POST"])

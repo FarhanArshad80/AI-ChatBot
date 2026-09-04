@@ -343,10 +343,62 @@
     if (el) el.remove();
   }
 
+  // An empty bot bubble to write into as the answer arrives. Text goes in
+  // through textContent, so a reply containing < or & renders as itself
+  // rather than as markup.
+  function startBotMsg() {
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+
+    const botIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" fill="#534AB7" opacity="0.4"/><path d="M8 12h8M12 8v8" stroke="#c0b8ff" stroke-width="2" stroke-linecap="round"/></svg>`;
+
+    row.innerHTML = `
+      <div class="msg-icon bot">${botIcon}</div>
+      <div>
+        <div class="bubble bot"></div>
+        <div class="time">${now()}</div>
+      </div>`;
+
+    chatBox.appendChild(row);
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    return { row, bubble: row.querySelector('.bubble') };
+  }
+
   function useChip(el) {
     input.value = el.textContent;
     document.getElementById('suggestions').style.display = 'none';
     sendMessage();
+  }
+
+  // The stream arrives as server-sent events: `data: {...}` frames separated
+  // by a blank line. A chunk off the network can split a frame anywhere, so
+  // whatever follows the last separator is kept back for the next read.
+  async function* readEvents(response) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop();
+
+      for (const frame of frames) {
+        const line = frame.split('\n').find((l) => l.startsWith('data:'));
+        if (!line) continue;
+
+        try {
+          yield JSON.parse(line.slice(5).trim());
+        } catch (e) {
+          /* a frame we cannot read is not worth ending the answer over */
+        }
+      }
+    }
   }
 
   async function sendMessage() {
@@ -359,19 +411,57 @@
     sendBtn.disabled = true;
     showTyping();
 
+    let bubble = null;
+
     try {
-      const res = await fetch('http://localhost:5000/chat', {
+      const res = await fetch('http://localhost:5000/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg })
       });
-      const data = await res.json();
+
+      // A refusal before the stream opens still answers in JSON.
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'The backend refused that message.');
+      }
+
+      for await (const event of readEvents(res)) {
+        if (event.error) {
+          removeTyping();
+          appendMsg('Error: ' + event.error, 'error');
+          bubble = null;
+          break;
+        }
+
+        if (event.delta) {
+          // The indicator gives way to the answer the moment there is one.
+          if (!bubble) {
+            removeTyping();
+            bubble = startBotMsg().bubble;
+          }
+
+          bubble.textContent += event.delta;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+      }
+
       removeTyping();
-      if (data.error) appendMsg('Error: ' + data.error, 'error');
-      else appendMsg(data.reply, 'bot');
+
+      // A stream that opened and closed without a word is still a failure,
+      // and an empty bubble does not say so.
+      if (bubble && !bubble.textContent.trim()) {
+        bubble.closest('.msg-row').remove();
+        appendMsg('The model returned an empty answer. Try rephrasing.', 'error');
+      }
     } catch (e) {
       removeTyping();
-      appendMsg('Could not reach the backend. Is your Flask server running?', 'error');
+      appendMsg(
+        e.message === 'Failed to fetch'
+          ? 'Could not reach the backend. Is your Flask server running?'
+          : e.message,
+        'error'
+      );
     }
 
     sendBtn.disabled = false;
