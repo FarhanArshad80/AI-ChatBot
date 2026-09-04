@@ -220,6 +220,28 @@
       color: var(--muted);
     }
 
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 28px;
+      border-top: 1px solid var(--border);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .pager-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .pager .btn[disabled] {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
     /* ── TABLE ── */
     .table-wrap {
       flex: 1;
@@ -502,7 +524,7 @@
       <div class="session-list" id="session-list">
         <div class="session-item active">
           <div class="s-title">All Records</div>
-          <div class="s-meta">Showing all history</div>
+          <div class="s-meta">Loading…</div>
         </div>
       </div>
     </div>
@@ -534,6 +556,14 @@
             <tr><td colspan="5"><div class="empty-state"><span class="icon">⏳</span>Loading records...</div></td></tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="pager" id="pager" hidden>
+        <span class="pager-range" id="pager-range"></span>
+        <div class="pager-controls">
+          <button class="btn" id="pager-prev" onclick="changePage(-1)">← Newer</button>
+          <button class="btn" id="pager-next" onclick="changePage(1)">Older →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -617,22 +647,69 @@
 
   <script>
     const API = "http://localhost:5000";
-    let allRecords = [];
+    const PAGE_SIZE = 25;
+
+    // `pageRecords` is one page of the transcript, not the whole of it. The
+    // table, the sidebar groups and the edit lookup all read from it, so
+    // anything they cannot see is on another page rather than absent.
+    let pageRecords = [];
+    let matchCount = 0;
+    let offset = 0;
+    let searchTerm = '';
+    let searchTimer = null;
     let selectedType = 'plm';
     let editMode = false; // false = create, true = edit
 
     /* ── LOAD HISTORY ── */
     async function loadHistory() {
+      const params = new URLSearchParams({ limit: PAGE_SIZE, offset });
+      if (searchTerm) params.set('q', searchTerm);
+
       try {
-        const res = await fetch(`${API}/admin/history`);
+        const res = await fetch(`${API}/admin/history?${params}`);
         const data = await res.json();
-        allRecords = data.history || [];
-        renderTable(allRecords);
-        updateCount(allRecords.length);
-        buildSidebar(allRecords);
+
+        if (data.error) throw new Error(data.error);
+
+        pageRecords = data.history || [];
+        matchCount = data.total ?? pageRecords.length;
+
+        // A deletion can empty the last page out from under us; step back
+        // rather than showing "no records" over a table that has plenty.
+        if (pageRecords.length === 0 && offset > 0) {
+          offset = Math.max(offset - PAGE_SIZE, 0);
+          return loadHistory();
+        }
+
+        renderTable(pageRecords);
+        updateCount(matchCount);
+        buildSidebar(pageRecords);
+        renderPager();
       } catch {
         toast("Failed to load records", true);
       }
+    }
+
+    function renderPager() {
+      const pager = document.getElementById("pager");
+      pager.hidden = matchCount <= PAGE_SIZE;
+
+      const first = matchCount === 0 ? 0 : offset + 1;
+      const last = offset + pageRecords.length;
+
+      document.getElementById("pager-range").textContent =
+        `Showing ${first}–${last} of ${matchCount}`;
+      document.getElementById("pager-prev").disabled = offset === 0;
+      document.getElementById("pager-next").disabled = last >= matchCount;
+    }
+
+    function changePage(direction) {
+      const next = offset + direction * PAGE_SIZE;
+      if (next < 0 || next >= matchCount) return;
+
+      offset = next;
+      loadHistory();
+      document.querySelector('.table-wrap').scrollTop = 0;
     }
 
     function renderTable(records) {
@@ -669,7 +746,7 @@
       list.innerHTML = `
         <div class="session-item active" onclick="showAll()">
           <div class="s-title">All Records</div>
-          <div class="s-meta">${records.length} total</div>
+          <div class="s-meta">${matchCount} total${matchCount > records.length ? ` · ${records.length} on this page` : ''}</div>
         </div>
       `;
 
@@ -693,18 +770,22 @@
     function showAll() {
       document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
       document.querySelector('.session-item').classList.add('active');
-      renderTable(allRecords);
-      updateCount(allRecords.length);
+      renderTable(pageRecords);
+      updateCount(matchCount);
     }
 
+    // Searching means a new query rather than a filter over what happens to
+    // be loaded — otherwise a term would only ever find matches on the page
+    // already on screen. Debounced so a typed word is one request, not five,
+    // and always from the first page of its own results.
     function filterTable() {
-      const q = document.getElementById("search-input").value.toLowerCase();
-      const filtered = allRecords.filter(r =>
-        (r.user_message || '').toLowerCase().includes(q) ||
-        (r.bot_response || '').toLowerCase().includes(q)
-      );
-      renderTable(filtered);
-      updateCount(filtered.length);
+      clearTimeout(searchTimer);
+
+      searchTimer = setTimeout(() => {
+        searchTerm = document.getElementById("search-input").value.trim();
+        offset = 0;
+        loadHistory();
+      }, 250);
     }
 
     /* ── EXPORT ── */
@@ -715,7 +796,7 @@
     function exportCsv() {
       const q = document.getElementById("search-input").value.trim();
 
-      if (allRecords.length === 0) {
+      if (matchCount === 0) {
         toast("Nothing to export yet", true);
         return;
       }
@@ -723,11 +804,19 @@
       const url = `${API}/admin/history/export${q ? `?q=${encodeURIComponent(q)}` : ""}`;
 
       window.location.href = url;
-      toast(q ? `Exporting records matching "${q}"` : "Exporting all records");
+      // Every match, not just the page in view — the endpoint applies the
+      // same filter without a range.
+      toast(
+        q
+          ? `Exporting ${matchCount} records matching "${q}"`
+          : `Exporting all ${matchCount} records`
+      );
     }
 
     function updateCount(n) {
-      document.getElementById("count-badge").textContent = `${n} record${n !== 1 ? 's' : ''}`;
+      const label = `${n} record${n !== 1 ? 's' : ''}`;
+      document.getElementById("count-badge").textContent =
+        searchTerm ? `${label} matching` : label;
     }
 
     /* ── CREATE ── */
@@ -744,7 +833,7 @@
 
     /* ── EDIT ── */
     function openEdit(id) {
-      const rec = allRecords.find(r => r.id === id);
+      const rec = pageRecords.find(r => r.id === id);
       if (!rec) return;
       editMode = true;
       document.getElementById("modal-title").textContent = "Edit Record #" + id;

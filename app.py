@@ -230,15 +230,77 @@ def reset():
 #  ADMIN CRUD ROUTES
 # ─────────────────────────────────────────────
 
+DEFAULT_PAGE_SIZE = 25
+MAX_PAGE_SIZE = 200
+
+
+def ilike_pattern(term):
+    """Wrap a search term as a PostgREST-safe ilike value.
+
+    % and _ are wildcards to LIKE, so a term containing either would match
+    far more than it looks like it should. The or_ filter is itself a
+    comma-separated list, so a comma in the term would split it into two
+    filters. Escaping and quoting makes PostgREST read the whole thing as
+    one literal.
+    """
+    escaped = (
+        term.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        .replace('"', '\\"')
+    )
+    return f'"%{escaped}%"'
+
+
+def history_query(search, count=None):
+    """The transcript, newest first, optionally narrowed to a search term."""
+    query = supabase.table("chat_history").select("*", count=count)
+
+    if search:
+        pattern = ilike_pattern(search)
+        query = query.or_(
+            f"user_message.ilike.{pattern},bot_response.ilike.{pattern}"
+        )
+
+    return query.order("created_at", desc=True)
+
+
+def read_int(name, default, minimum, maximum):
+    """A query-string integer, clamped. Junk falls back to the default."""
+    try:
+        value = int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+    return max(minimum, min(value, maximum))
+
+
 @app.route("/admin/history", methods=["GET"])
 def admin_history():
-    """READ — Fetch all chat history from Supabase"""
+    """READ — a page of chat history, newest first.
+
+    This used to hand back the whole table and let the browser search it,
+    which is fine for a demo and untenable for a log that keeps growing:
+    every page load pulled every record ever written. Searching and paging
+    now happen in Postgres, and the response says how many rows the search
+    actually matched so the page can say where it is in them.
+    """
     try:
-        response = supabase.table("chat_history") \
-            .select("*") \
-            .order("created_at", desc=True) \
+        search = request.args.get("q", "").strip()
+        limit = read_int("limit", DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE)
+        offset = read_int("offset", 0, 0, 1_000_000)
+
+        response = history_query(search, count="exact") \
+            .range(offset, offset + limit - 1) \
             .execute()
-        return jsonify({"history": response.data})
+
+        return jsonify({
+            "history": response.data or [],
+            "total": response.count if response.count is not None else len(response.data or []),
+            "limit": limit,
+            "offset": offset,
+            "query": search,
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -253,21 +315,13 @@ def export_history():
     the search box uses, so what is on screen is what comes down.
     """
     try:
-        query = request.args.get("q", "").strip().lower()
+        search = request.args.get("q", "").strip()
 
-        response = supabase.table("chat_history") \
-            .select("*") \
-            .order("created_at", desc=True) \
-            .execute()
-
+        # Filtered by the same query the table uses, so "what is on screen"
+        # and "what comes down" cannot drift apart. No range here: an export
+        # is meant to be the whole of whatever was asked for.
+        response = history_query(search).execute()
         records = response.data or []
-
-        if query:
-            records = [
-                record for record in records
-                if query in (record.get("user_message") or "").lower()
-                or query in (record.get("bot_response") or "").lower()
-            ]
 
         buffer = io.StringIO()
         writer = csv.writer(buffer)
