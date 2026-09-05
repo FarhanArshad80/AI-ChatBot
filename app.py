@@ -336,8 +336,23 @@ def ilike_pattern(term):
     return f'"%{escaped}%"'
 
 
-def history_query(search, count=None):
-    """The transcript, newest first, optionally narrowed to a search term."""
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def read_date(name):
+    """A YYYY-MM-DD bound from the query string, or None.
+
+    Anything that is not a plain date is treated as absent rather than
+    rejected, which matches how the paging arguments handle junk: a
+    malformed filter should widen the view, never narrow it to nothing.
+    """
+    value = request.args.get(name, "").strip()
+
+    return value if DATE_RE.match(value) else None
+
+
+def history_query(search, since=None, until=None, count=None):
+    """The transcript, newest first, narrowed by search term and date range."""
     query = supabase.table("chat_history").select("*", count=count)
 
     if search:
@@ -345,6 +360,15 @@ def history_query(search, count=None):
         query = query.or_(
             f"user_message.ilike.{pattern},bot_response.ilike.{pattern}"
         )
+
+    # Both bounds are inclusive of the whole day named. `until` in particular
+    # has to reach the end of its date: comparing against the bare date would
+    # read as midnight and silently drop everything said on the last day of
+    # the range — the day people most often mean when they pick one.
+    if since:
+        query = query.gte("created_at", f"{since}T00:00:00+00:00")
+    if until:
+        query = query.lte("created_at", f"{until}T23:59:59.999999+00:00")
 
     return query.order("created_at", desc=True)
 
@@ -371,10 +395,12 @@ def admin_history():
     """
     try:
         search = request.args.get("q", "").strip()
+        since = read_date("from")
+        until = read_date("to")
         limit = read_int("limit", DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE)
         offset = read_int("offset", 0, 0, 1_000_000)
 
-        response = history_query(search, count="exact") \
+        response = history_query(search, since, until, count="exact") \
             .range(offset, offset + limit - 1) \
             .execute()
 
@@ -384,6 +410,8 @@ def admin_history():
             "limit": limit,
             "offset": offset,
             "query": search,
+            "from": since,
+            "to": until,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -422,7 +450,11 @@ def export_history():
                 record.get("bot_response", ""),
             ])
 
-        filename = f"plm-chat-history-{datetime.now(timezone.utc):%Y%m%d}.csv"
+        # The filename says what is in the file, so a folder of exports can
+        # be told apart without opening any of them.
+        span = f"{since or 'start'}-to-{until or 'now'}" if (since or until) else \
+            f"{datetime.now(timezone.utc):%Y%m%d}"
+        filename = f"plm-chat-history-{span}.csv"
 
         # utf-8-sig: without the BOM, Excel reads a UTF-8 CSV as the local
         # code page and mangles anything outside ASCII.

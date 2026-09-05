@@ -214,6 +214,45 @@
       font-size: 0.85rem;
     }
 
+    /* Date range. Kept beside the search box because they are the same act
+       — narrowing the log — and the count badge after them reports on both. */
+    .range-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .range-wrap input[type="date"] {
+      padding: 7px 9px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      outline: none;
+      color-scheme: dark;
+      transition: border-color 0.2s;
+    }
+
+    .range-wrap input[type="date"]:focus { border-color: var(--accent); }
+
+    .range-clear {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 2px 4px;
+      line-height: 1;
+    }
+
+    .range-clear:hover { color: var(--text); }
+    .range-clear[hidden] { display: none; }
+
     .count-badge {
       font-family: 'IBM Plex Mono', monospace;
       font-size: 0.78rem;
@@ -536,6 +575,14 @@
           <span class="search-icon">🔍</span>
           <input id="search-input" type="text" placeholder="Search messages..." oninput="filterTable()" />
         </div>
+        <div class="range-wrap">
+          <label for="from-input">from</label>
+          <input id="from-input" type="date" onchange="applyRange()" aria-label="From date" />
+          <label for="to-input">to</label>
+          <input id="to-input" type="date" onchange="applyRange()" aria-label="To date" />
+          <button class="range-clear" id="range-clear" onclick="clearRange()" title="Clear date range" aria-label="Clear date range" hidden>✕</button>
+        </div>
+
         <span class="count-badge" id="count-badge">— records</span>
         <button class="btn" onclick="exportCsv()">⬇ Export CSV</button>
         <button class="btn danger" onclick="confirmDeleteAll()">🗑 Delete All</button>
@@ -656,14 +703,29 @@
     let matchCount = 0;
     let offset = 0;
     let searchTerm = '';
+    let fromDate = '';
+    let toDate = '';
     let searchTimer = null;
     let selectedType = 'plm';
     let editMode = false; // false = create, true = edit
 
     /* ── LOAD HISTORY ── */
-    async function loadHistory() {
-      const params = new URLSearchParams({ limit: PAGE_SIZE, offset });
+    // The one place the current filters are turned into query parameters, so
+    // the table and the export cannot drift into asking different questions.
+    function filterParams() {
+      const params = new URLSearchParams();
+
       if (searchTerm) params.set('q', searchTerm);
+      if (fromDate) params.set('from', fromDate);
+      if (toDate) params.set('to', toDate);
+
+      return params;
+    }
+
+    async function loadHistory() {
+      const params = filterParams();
+      params.set('limit', PAGE_SIZE);
+      params.set('offset', offset);
 
       try {
         const res = await fetch(`${API}/admin/history?${params}`);
@@ -788,35 +850,63 @@
       }, 250);
     }
 
+    /* ── DATE RANGE ── */
+    // A range picked backwards — a "from" after the "to" — matches nothing
+    // and looks like a broken page. The other end is pushed along to meet it
+    // instead, which is what someone correcting a date meant to happen.
+    function applyRange() {
+      const fromEl = document.getElementById("from-input");
+      const toEl = document.getElementById("to-input");
+
+      if (fromEl.value && toEl.value && fromEl.value > toEl.value) {
+        if (document.activeElement === fromEl) toEl.value = fromEl.value;
+        else fromEl.value = toEl.value;
+      }
+
+      fromDate = fromEl.value;
+      toDate = toEl.value;
+      document.getElementById("range-clear").hidden = !fromDate && !toDate;
+
+      offset = 0;
+      loadHistory();
+    }
+
+    function clearRange() {
+      document.getElementById("from-input").value = '';
+      document.getElementById("to-input").value = '';
+      applyRange();
+    }
+
     /* ── EXPORT ── */
     // The search term rides along, so the file matches the rows on screen
     // rather than quietly handing over the whole table. The download itself
     // is a plain navigation — the endpoint sends it as an attachment, so
     // the page stays where it is.
     function exportCsv() {
-      const q = document.getElementById("search-input").value.trim();
-
       if (matchCount === 0) {
         toast("Nothing to export yet", true);
         return;
       }
 
-      const url = `${API}/admin/history/export${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+      const params = filterParams();
+      const query = params.toString();
 
-      window.location.href = url;
+      window.location.href = `${API}/admin/history/export${query ? `?${query}` : ""}`;
       // Every match, not just the page in view — the endpoint applies the
       // same filter without a range.
       toast(
-        q
-          ? `Exporting ${matchCount} records matching "${q}"`
+        query
+          ? `Exporting ${matchCount} filtered records`
           : `Exporting all ${matchCount} records`
       );
     }
 
     function updateCount(n) {
       const label = `${n} record${n !== 1 ? 's' : ''}`;
+      const narrowed = Boolean(searchTerm || fromDate || toDate);
+
       document.getElementById("count-badge").textContent =
-        searchTerm ? `${label} matching` : label;
+        narrowed ? `${label} matching` : label;
     }
 
     /* ── CREATE ── */
