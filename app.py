@@ -3,6 +3,8 @@ import io
 import json
 import os
 import re
+import uuid
+from collections import OrderedDict
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from google import genai
@@ -27,14 +29,63 @@ supabase: Client = create_client(
     os.getenv("SUPABASE_KEY")
 )
 
-# Store history in memory
-history = []
-
 # Every past turn is replayed to the model on each request, so an unbounded
 # history quietly grows the prompt (and its cost) for the whole session.
 # Keep a rolling window of the most recent exchanges instead; the full record
 # still lives in Supabase.
 MAX_HISTORY_TURNS = 12
+
+# One conversation per session rather than one for the whole process. A single
+# shared list meant two people using this at once were talking into the same
+# thread: each had the other's turns replayed to the model as context, and
+# either one's /reset wiped both.
+#
+# Kept in memory, so it is per-process and does not survive a restart or a
+# second worker. That is the right trade for a demo — the durable record is
+# in Supabase — but it is the first thing to move if this is ever run with
+# more than one worker.
+MAX_CONVERSATIONS = 200
+
+conversations = OrderedDict()
+
+# Session ids arrive from the client, so they are checked before being used
+# as a dictionary key. An arbitrary string off the wire should not decide
+# what the server allocates or how much of it.
+SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def session_key(raw):
+    """The caller's session id, or a fresh one if it is missing or malformed."""
+    return raw if isinstance(raw, str) and SESSION_ID_RE.match(raw) else uuid.uuid4().hex
+
+
+def request_session_key():
+    """The session id carried in the request body.
+
+    In the body rather than a header on purpose: a custom header turns every
+    call into a CORS preflight, and this is a field the client already sends
+    JSON for.
+
+    Read with silent=True because /reset is posted with no body at all, and
+    request.json raises a 415 on a request that never claimed to be JSON.
+    """
+    return session_key((request.get_json(silent=True) or {}).get("session_id"))
+
+
+def get_history(key):
+    """This session's turns, created on first use.
+
+    Reading a conversation moves it to the end, so when the cap is reached it
+    is the one nobody has spoken into for longest that goes — not whichever
+    happens to have been created first.
+    """
+    history = conversations.pop(key, [])
+    conversations[key] = history
+
+    while len(conversations) > MAX_CONVERSATIONS:
+        conversations.popitem(last=False)
+
+    return history
 
 
 def utc_now_iso():
@@ -85,7 +136,7 @@ def friendly_error(error):
     return text, 500
 
 
-def stream_reply(user_input):
+def stream_reply(user_input, history):
     """Yield the model's answer in the pieces it arrives in."""
     contents = history + [
         types.Content(role="user", parts=[types.Part.from_text(text=user_input)])
@@ -103,14 +154,14 @@ def stream_reply(user_input):
             yield chunk.text
 
 
-def remember_turn(user_input, reply):
-    """Record one exchange in memory and in Supabase.
+def remember_turn(user_input, reply, key):
+    """Record one exchange in this session's memory and in Supabase.
 
     Trimming in whole pairs keeps user/model roles alternating, which the API
     expects. The model has already answered by the time this runs, so a
     storage outage costs the transcript, not the reply.
     """
-    global history
+    history = get_history(key)
 
     history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
     history.append(types.Content(role="model", parts=[types.Part.from_text(text=reply)]))
@@ -147,7 +198,8 @@ def health():
     return jsonify({
         "status": "ok",
         "model": model_id,
-        "turns_in_memory": len(history) // 2,
+        "conversations": len(conversations),
+        "max_conversations": MAX_CONVERSATIONS,
         "max_turns": MAX_HISTORY_TURNS,
         "checked_at": utc_now_iso()
     })
@@ -164,11 +216,15 @@ def chat():
     if not user_input:
         return jsonify({"error": "Empty message"}), 400
 
-    try:
-        reply = clean_text("".join(stream_reply(user_input)))
-        saved = remember_turn(user_input, reply)
+    key = request_session_key()
 
-        return jsonify({"reply": reply, "saved": saved})
+    try:
+        reply = clean_text("".join(stream_reply(user_input, get_history(key))))
+        saved = remember_turn(user_input, reply, key)
+
+        # Echoed back so a caller that arrived without one can adopt the
+        # session it was just given instead of starting over on every turn.
+        return jsonify({"reply": reply, "saved": saved, "session_id": key})
 
     except Exception as e:
         message, status = friendly_error(e)
@@ -190,11 +246,16 @@ def chat_stream():
     if not user_input:
         return jsonify({"error": "Empty message"}), 400
 
+    # Read out here for the same reason the message is: the request context
+    # is gone by the time Flask consumes the generator below.
+    key = request_session_key()
+    history = get_history(key)
+
     def events():
         pieces = []
 
         try:
-            for piece in stream_reply(user_input):
+            for piece in stream_reply(user_input, history):
                 pieces.append(piece)
                 yield sse({"delta": clean_text(piece)})
         except Exception as e:
@@ -204,8 +265,8 @@ def chat_stream():
             yield sse({"error": message})
             return
 
-        saved = remember_turn(user_input, clean_text("".join(pieces)))
-        yield sse({"done": True, "saved": saved})
+        saved = remember_turn(user_input, clean_text("".join(pieces)), key)
+        yield sse({"done": True, "saved": saved, "session_id": key})
 
     return Response(
         events(),
@@ -221,9 +282,11 @@ def chat_stream():
 
 @app.route("/reset", methods=["POST"])
 def reset():
-    global history
-    history = []
-    return jsonify({"status": "History cleared"})
+    """Clear one session's turns, not everybody's."""
+    key = request_session_key()
+    conversations.pop(key, None)
+
+    return jsonify({"status": "History cleared", "session_id": key})
 
 
 # ─────────────────────────────────────────────

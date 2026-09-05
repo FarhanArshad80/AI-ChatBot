@@ -277,6 +277,33 @@
   const statusDot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
 
+  // The conversation this tab belongs to. The backend keeps one thread per
+  // session, so without an id of our own every tab would be talking into the
+  // same one — and clearing the chat in either would clear it in both.
+  //
+  // Storage can be unavailable (private windows, blocked site data). A
+  // session that only lives for this page load is a worse conversation than
+  // one that survives a reload, but it is still a conversation of its own.
+  const SESSION_KEY = 'plm-chat.session-id';
+
+  function newSessionId() {
+    return (crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2))
+      .replace(/-/g, '');
+  }
+
+  let sessionId = (() => {
+    try {
+      const saved = localStorage.getItem(SESSION_KEY);
+      if (saved) return saved;
+
+      const fresh = newSessionId();
+      localStorage.setItem(SESSION_KEY, fresh);
+      return fresh;
+    } catch (e) {
+      return newSessionId();
+    }
+  })();
+
   document.getElementById('init-time').textContent = now();
 
   // Ping the backend so the header reflects the real connection state
@@ -417,7 +444,7 @@
       const res = await fetch('http://localhost:5000/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg })
+        body: JSON.stringify({ message: msg, session_id: sessionId })
       });
 
       // A refusal before the stream opens still answers in JSON.
@@ -469,7 +496,15 @@
   }
 
   async function resetChat() {
-    try { await fetch('http://localhost:5000/reset', { method: 'POST' }); } catch(e) {}
+    // Clears this conversation on the server too — otherwise the next
+    // message would still arrive with everything above it as context.
+    try {
+      await fetch('http://localhost:5000/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId })
+      });
+    } catch (e) { /* a cleared screen is still worth something */ }
     chatBox.innerHTML = '';
     const botIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" fill="#534AB7" opacity="0.4"/><path d="M8 12h8M12 8v8" stroke="#c0b8ff" stroke-width="2" stroke-linecap="round"/></svg>`;
     chatBox.innerHTML = `
