@@ -253,19 +253,40 @@ def chat_stream():
 
     def events():
         pieces = []
+        recorded = False
+        saved = False
+
+        def record():
+            """Record whatever has arrived so far, at most once."""
+            nonlocal recorded
+
+            if recorded or not pieces:
+                return False
+
+            recorded = True
+            return remember_turn(user_input, clean_text("".join(pieces)), key)
 
         try:
             for piece in stream_reply(user_input, history):
                 pieces.append(piece)
                 yield sse({"delta": clean_text(piece)})
+
+            saved = record()
         except Exception as e:
             message, _ = friendly_error(e)
             # The status line went out with the first byte, so a failure
             # halfway through has to be reported inside the stream.
             yield sse({"error": message})
             return
+        finally:
+            # A client that presses stop or navigates away closes this
+            # generator at the yield above, raising GeneratorExit — which is
+            # not an Exception and so never reaches the handler. Recording
+            # here too keeps the conversation the model is replayed identical
+            # to the one that was actually on screen; without it the next
+            # turn would carry a question with no answer attached to it.
+            record()
 
-        saved = remember_turn(user_input, clean_text("".join(pieces)), key)
         yield sse({"done": True, "saved": saved, "session_id": key})
 
     return Response(

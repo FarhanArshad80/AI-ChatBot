@@ -197,6 +197,13 @@
     .send-btn:active { transform: scale(0.93); }
     .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
     .send-btn svg { width: 16px; height: 16px; }
+    .send-btn[hidden] { display: none; }
+
+    /* Stop is the same shape in a colour that reads as "interrupt" rather
+       than "go" — it stands where send was, because that is where the hand
+       already is. */
+    .stop-btn { background: #8A3A4E; }
+    .stop-btn:hover { background: #6E2E3E; }
 
     .footer-note {
       text-align: center;
@@ -259,9 +266,14 @@
     <div class="input-wrap">
       <input id="user-input" type="text" placeholder="Type your message..." />
     </div>
-    <button class="send-btn" id="send-btn" onclick="sendMessage()">
+    <button class="send-btn" id="send-btn" onclick="sendMessage()" aria-label="Send message">
       <svg viewBox="0 0 24 24" fill="none">
         <path d="M5 12h14M13 6l6 6-6 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button class="send-btn stop-btn" id="stop-btn" onclick="stopAnswer()" aria-label="Stop generating" hidden>
+      <svg viewBox="0 0 24 24" fill="none">
+        <rect x="7" y="7" width="10" height="10" rx="2" fill="white"/>
       </svg>
     </button>
   </div>
@@ -273,6 +285,12 @@
   const chatBox = document.getElementById('chat-box');
   const input = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
+  const stopBtn = document.getElementById('stop-btn');
+
+  // Held while an answer is streaming so it can be called off. A six-stage
+  // PLM analysis runs for a while, and by paragraph two it is often already
+  // clear the question was the wrong one.
+  let inFlight = null;
 
   const statusDot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
@@ -392,6 +410,19 @@
     return { row, bubble: row.querySelector('.bubble') };
   }
 
+  // Swaps the composer between "send" and "stop". They occupy the same slot,
+  // so only one is ever on screen and the button under the cursor is always
+  // the one that applies.
+  function setBusy(busy) {
+    sendBtn.hidden = busy;
+    stopBtn.hidden = !busy;
+    input.disabled = busy;
+  }
+
+  function stopAnswer() {
+    if (inFlight) inFlight.abort();
+  }
+
   function useChip(el) {
     input.value = el.textContent;
     document.getElementById('suggestions').style.display = 'none';
@@ -435,16 +466,19 @@
     document.getElementById('suggestions').style.display = 'none';
     appendMsg(msg, 'user');
     input.value = '';
-    sendBtn.disabled = true;
+    setBusy(true);
     showTyping();
 
     let bubble = null;
+    const controller = new AbortController();
+    inFlight = controller;
 
     try {
       const res = await fetch('http://localhost:5000/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, session_id: sessionId })
+        body: JSON.stringify({ message: msg, session_id: sessionId }),
+        signal: controller.signal
       });
 
       // A refusal before the stream opens still answers in JSON.
@@ -483,15 +517,30 @@
       }
     } catch (e) {
       removeTyping();
-      appendMsg(
-        e.message === 'Failed to fetch'
-          ? 'Could not reach the backend. Is your Flask server running?'
-          : e.message,
-        'error'
-      );
+
+      // Aborting is a choice, not a fault. Whatever had already arrived stays
+      // on screen and is marked as cut short, rather than the partial answer
+      // disappearing as if nothing had been said.
+      if (e.name === 'AbortError') {
+        if (bubble && bubble.textContent.trim()) {
+          bubble.textContent += ' …';
+          appendMsg('Stopped. The server keeps the full answer in this conversation.', 'error');
+        } else {
+          if (bubble) bubble.closest('.msg-row').remove();
+          appendMsg('Stopped before the answer started.', 'error');
+        }
+      } else {
+        appendMsg(
+          e.message === 'Failed to fetch'
+            ? 'Could not reach the backend. Is your Flask server running?'
+            : e.message,
+          'error'
+        );
+      }
     }
 
-    sendBtn.disabled = false;
+    inFlight = null;
+    setBusy(false);
     input.focus();
   }
 
