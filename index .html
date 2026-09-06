@@ -264,7 +264,10 @@
   <!-- INPUT -->
   <div class="input-area">
     <div class="input-wrap">
-      <input id="user-input" type="text" placeholder="Type your message..." />
+      <!-- Matches MAX_MESSAGE_CHARS on the server. The server is still the
+           one enforcing it — this only means the limit is met while typing
+           rather than after pressing send. -->
+      <input id="user-input" type="text" maxlength="8000" placeholder="Type your message..." />
     </div>
     <button class="send-btn" id="send-btn" onclick="sendMessage()" aria-label="Send message">
       <svg viewBox="0 0 24 24" fill="none">

@@ -179,6 +179,52 @@ def remember_turn(user_input, reply, key):
         return False
 
 
+# Every message stays in the rolling window and is replayed to the model on
+# each of the next turns, so an enormous one is not paid for once — it is
+# paid for MAX_HISTORY_TURNS times, and it crowds out the exchanges that gave
+# the conversation its point. Generous for a product description, far short
+# of a pasted document.
+MAX_MESSAGE_CHARS = 8000
+
+
+def read_message():
+    """The user's message, or the response explaining why there isn't one.
+
+    Returns (text, None) when the request is usable and (None, response) when
+    it is not, so both chat routes reject the same things the same way rather
+    than each growing its own idea of what a message is.
+    """
+    # silent=True because request.json raises a bare 415 on a request that
+    # never claimed to be JSON, which tells the caller nothing about what to
+    # send instead.
+    body = request.get_json(silent=True)
+
+    if not isinstance(body, dict):
+        return None, (jsonify({"error": "Send a JSON object with a 'message' field."}), 400)
+
+    raw = body.get("message", "")
+
+    # A number or a list reaches .strip() and raises AttributeError. That was
+    # answering a malformed request with a 500 and a stack trace — the shape
+    # of answer that says the server broke, when the request did.
+    if not isinstance(raw, str):
+        return None, (jsonify({"error": "'message' must be a string."}), 400)
+
+    text = raw.strip()
+
+    if not text:
+        return None, (jsonify({"error": "Empty message"}), 400)
+
+    if len(text) > MAX_MESSAGE_CHARS:
+        return None, (jsonify({
+            "error": f"That message is too long — keep it under {MAX_MESSAGE_CHARS:,} characters.",
+            "limit": MAX_MESSAGE_CHARS,
+            "length": len(text),
+        }), 413)
+
+    return text, None
+
+
 def sse(payload):
     """Frame one server-sent event.
 
@@ -201,6 +247,7 @@ def health():
         "conversations": len(conversations),
         "max_conversations": MAX_CONVERSATIONS,
         "max_turns": MAX_HISTORY_TURNS,
+        "max_message_chars": MAX_MESSAGE_CHARS,
         "checked_at": utc_now_iso()
     })
 
@@ -212,9 +259,9 @@ def health():
 @app.route("/chat", methods=["POST"])
 def chat():
     """One request, one whole answer. Kept for callers that cannot stream."""
-    user_input = request.json.get("message", "").strip()
-    if not user_input:
-        return jsonify({"error": "Empty message"}), 400
+    user_input, refusal = read_message()
+    if refusal:
+        return refusal
 
     key = request_session_key()
 
@@ -242,9 +289,9 @@ def chat_stream():
     The message is read here rather than inside the generator: by the time
     Flask starts consuming that generator the request context is gone.
     """
-    user_input = request.json.get("message", "").strip()
-    if not user_input:
-        return jsonify({"error": "Empty message"}), 400
+    user_input, refusal = read_message()
+    if refusal:
+        return refusal
 
     # Read out here for the same reason the message is: the request context
     # is gone by the time Flask consumes the generator below.
