@@ -423,16 +423,18 @@ def export_history():
 
     The admin table is for reading a few records; anything past that —
     handing the log to someone, keeping a copy off Supabase, opening it in a
-    spreadsheet — wants a file. An optional ?q= filters on the same terms
-    the search box uses, so what is on screen is what comes down.
+    spreadsheet — wants a file. ?q=, ?from= and ?to= filter on the same terms
+    the admin table uses, so what is on screen is what comes down.
     """
     try:
         search = request.args.get("q", "").strip()
+        since = read_date("from")
+        until = read_date("to")
 
         # Filtered by the same query the table uses, so "what is on screen"
         # and "what comes down" cannot drift apart. No range here: an export
         # is meant to be the whole of whatever was asked for.
-        response = history_query(search).execute()
+        response = history_query(search, since, until).execute()
         records = response.data or []
 
         buffer = io.StringIO()
