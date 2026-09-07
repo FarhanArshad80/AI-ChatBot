@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 # 1. Load environment variables
 load_dotenv()
@@ -460,6 +460,98 @@ def admin_history():
             "from": since,
             "to": until,
         })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# A fortnight is long enough to show a shape and short enough to read as a
+# row of bars. The ceiling is there because this counts rows in Python rather
+# than in Postgres — a year of traffic should not be pulled across the wire to
+# produce twelve numbers.
+STATS_DEFAULT_DAYS = 14
+STATS_MAX_DAYS = 90
+
+
+def day_key(value):
+    """The UTC calendar day an ISO timestamp falls on, or None.
+
+    Timestamps written by this app are already UTC, but a row inserted by
+    hand or by an older build can carry an offset — and reading the date off
+    the front of "2026-09-07T23:30:00-05:00" would file it a day early. So
+    anything parseable is converted first, and only what is not falls back to
+    the plain prefix.
+    """
+    text = str(value or "")
+
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text[:10] if DATE_RE.match(text[:10]) else None
+
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(timezone.utc)
+
+    return moment.date().isoformat()
+
+
+@app.route("/admin/stats", methods=["GET"])
+def admin_stats():
+    """The shape of the log rather than another page of it.
+
+    The table answers "what was said"; nothing answered "how much, and when".
+    Whether the assistant is being used twice a week or two hundred times a
+    day is the first question anyone opening an admin page has, and until now
+    it could only be guessed at by paging to the end and reading dates.
+    """
+    try:
+        days = read_int("days", STATS_DEFAULT_DAYS, 1, STATS_MAX_DAYS)
+        today = datetime.now(timezone.utc).date()
+        since = today - timedelta(days=days - 1)
+
+        # Counted by Postgres, not by pulling the table down to measure it.
+        # limit(1) because the count comes back in the response header and
+        # the rows themselves are not wanted.
+        total = supabase.table("chat_history") \
+            .select("id", count="exact") \
+            .limit(1) \
+            .execute() \
+            .count or 0
+
+        window = supabase.table("chat_history") \
+            .select("created_at") \
+            .gte("created_at", f"{since.isoformat()}T00:00:00+00:00") \
+            .execute()
+
+        counts = {}
+        for record in window.data or []:
+            key = day_key(record.get("created_at"))
+            if key:
+                counts[key] = counts.get(key, 0) + 1
+
+        # Zero-filled rather than sparse. A quiet Sunday is a fact about the
+        # fortnight, and a chart that simply leaves it out draws a busier one
+        # than actually happened.
+        series = [
+            {
+                "date": (since + timedelta(days=step)).isoformat(),
+                "count": counts.get((since + timedelta(days=step)).isoformat(), 0),
+            }
+            for step in range(days)
+        ]
+
+        busiest = max(series, key=lambda entry: entry["count"])
+
+        return jsonify({
+            "total": total,
+            "window_days": days,
+            "window_total": sum(entry["count"] for entry in series),
+            "days": series,
+            # A fortnight of silence has no busiest day, and naming one would
+            # dress a zero up as a peak.
+            "busiest": busiest if busiest["count"] else None,
+            "generated_at": utc_now_iso(),
+        })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

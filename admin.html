@@ -532,6 +532,48 @@
       background: rgba(124,109,250,0.1);
     }
 
+    /* Activity strip. The table says what was said; this says how much and
+       when, which is the question anyone opening an admin page has first. */
+    .activity {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+      padding: 14px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .activity-figures { display: flex; gap: 26px; flex-wrap: wrap; }
+    .activity-figures > div { display: flex; flex-direction: column; gap: 2px; }
+    .activity-value { font-size: 1.15rem; font-weight: 700; line-height: 1.1; }
+    .activity-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .activity-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 40px;
+      min-width: 180px;
+      margin-left: auto;
+    }
+
+    .activity-bar {
+      width: 8px;
+      border-radius: 2px 2px 0 0;
+      background: var(--accent);
+    }
+
+    /* A day with nothing on it keeps its place in the row as a flat tick,
+       so the gaps are visible rather than closed up. */
+    .activity-bar.is-empty { background: var(--border); }
+
     .chat-type-card .icon { font-size: 1.6rem; display: block; margin-bottom: 7px; }
     .chat-type-card .label { font-size: 0.82rem; font-weight: 700; }
     .chat-type-card .desc { font-size: 0.74rem; color: var(--muted); margin-top: 3px; font-family: 'IBM Plex Mono', monospace; }
@@ -547,7 +589,7 @@
     </div>
     <div class="topbar-actions">
       <button class="btn" onclick="window.location.href='index%20.html'">← Chat</button>
-      <button class="btn success" onclick="loadHistory()">↻ Refresh</button>
+      <button class="btn success" onclick="loadHistory(); loadStats()">↻ Refresh</button>
       <button class="btn primary" onclick="openCreate()">+ New Record</button>
     </div>
   </div>
@@ -586,6 +628,28 @@
         <span class="count-badge" id="count-badge">— records</span>
         <button class="btn" onclick="exportCsv()">⬇ Export CSV</button>
         <button class="btn danger" onclick="confirmDeleteAll()">🗑 Delete All</button>
+      </div>
+
+      <!-- Hidden until it has something true to say: the table is the point
+           of this page, and a summary that cannot be drawn should not turn a
+           working log into an error screen. -->
+      <div class="activity" id="activity" hidden>
+        <div class="activity-figures">
+          <div>
+            <span class="activity-value" id="activity-total">—</span>
+            <span class="activity-label">records all time</span>
+          </div>
+          <div>
+            <span class="activity-value" id="activity-window">—</span>
+            <span class="activity-label" id="activity-window-label">recently</span>
+          </div>
+          <div>
+            <span class="activity-value" id="activity-busiest">—</span>
+            <span class="activity-label">busiest day</span>
+          </div>
+        </div>
+
+        <div class="activity-chart" id="activity-chart" role="img" aria-label="Records per day"></div>
       </div>
 
       <div class="table-wrap">
@@ -695,6 +759,8 @@
   <script>
     const API = "http://localhost:5000";
     const PAGE_SIZE = 25;
+    // Long enough to show a shape, short enough to read as a row of bars.
+    const ACTIVITY_DAYS = 14;
 
     // `pageRecords` is one page of the transcript, not the whole of it. The
     // table, the sidebar groups and the edit lookup all read from it, so
@@ -750,6 +816,67 @@
       } catch {
         toast("Failed to load records", true);
       }
+    }
+
+    /* ── ACTIVITY ── */
+    // Deliberately not filtered by the search box or the date range: this is
+    // the backdrop the filtered table is read against, and a summary that
+    // narrowed along with it could only ever agree with itself.
+    async function loadStats() {
+      const panel = document.getElementById("activity");
+
+      try {
+        const res = await fetch(`${API}/admin/stats?days=${ACTIVITY_DAYS}`);
+        const data = await res.json();
+
+        if (!res.ok || data.error) throw new Error(data.error || "unavailable");
+
+        renderStats(data);
+        panel.hidden = false;
+      } catch {
+        // No toast. The records loaded fine, and an error about the summary
+        // would read as an error about them.
+        panel.hidden = true;
+      }
+    }
+
+    function renderStats(data) {
+      const days = data.days || [];
+
+      document.getElementById("activity-total").textContent = data.total ?? 0;
+      document.getElementById("activity-window").textContent = data.window_total ?? 0;
+      document.getElementById("activity-window-label").textContent =
+        `in the last ${data.window_days} days`;
+      document.getElementById("activity-busiest").textContent = data.busiest
+        ? `${data.busiest.count}`
+        : "—";
+
+      const chart = document.getElementById("activity-chart");
+      chart.innerHTML = "";
+
+      // The tallest bar sets the scale. Guarded at 1 so a fortnight of
+      // silence divides by something.
+      const peak = Math.max(1, ...days.map(d => d.count));
+
+      for (const day of days) {
+        const bar = document.createElement("div");
+
+        bar.className = day.count ? "activity-bar" : "activity-bar is-empty";
+        // A floor of 6% so a one-record day is still visible beside a
+        // forty-record one instead of rounding away to nothing.
+        bar.style.height = day.count ? `${Math.max(6, (day.count / peak) * 100)}%` : "2px";
+        bar.title = `${day.date}: ${day.count} record${day.count === 1 ? "" : "s"}`;
+
+        chart.appendChild(bar);
+      }
+
+      const busiest = data.busiest;
+      chart.setAttribute(
+        "aria-label",
+        busiest
+          ? `Records per day over the last ${data.window_days} days. Busiest was ${busiest.date} with ${busiest.count}.`
+          : `No records in the last ${data.window_days} days.`
+      );
     }
 
     function renderPager() {
@@ -967,6 +1094,7 @@
         }
         closeModal("edit-overlay");
         loadHistory();
+        loadStats();
       } catch {
         toast("Save failed.", true);
       }
@@ -979,6 +1107,7 @@
         await fetch(`${API}/admin/history/${id}`, { method: "DELETE" });
         toast("Record deleted");
         loadHistory();
+        loadStats();
       } catch {
         toast("Delete failed.", true);
       }
@@ -990,6 +1119,7 @@
         await fetch(`${API}/admin/history/all`, { method: "DELETE" });
         toast("All records deleted");
         loadHistory();
+        loadStats();
       } catch {
         toast("Failed to delete all.", true);
       }
@@ -1025,6 +1155,7 @@
           });
           toast("New chat started with initial message ✓");
           loadHistory();
+          loadStats();
         } catch {
           toast("Chat started, but initial message failed.", true);
         }
@@ -1064,6 +1195,7 @@
 
     // Init
     loadHistory();
+    loadStats();
   </script>
 </body>
 </html>
