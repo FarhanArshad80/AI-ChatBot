@@ -556,6 +556,160 @@ def admin_stats():
         return jsonify({"error": str(e)}), 500
 
 
+# The words a question is built out of that say nothing about what it is
+# about. Question openers ("how", "what", "can") are in here for the same
+# reason "the" is: every question has one, so counting them ranks the shape
+# of English rather than the subject of the conversation.
+TOPIC_STOPWORDS = frozenset("""
+about after all also am an and any are aren as at
+be because been before being between both but by
+can cant cannot come could couldnt did didnt do does doesnt doing dont down
+during each even every few for from further
+get gets getting give got had hadnt has hasnt have havent having he hello her
+here hers herself hey hi him himself his how however
+if in into is isnt it its itself
+just know
+let like
+make may me might mine more most much must my myself
+need no nor not now
+of off ok okay on once one only or other ought our ours ourselves out over own
+please
+same say see she should shouldnt so some still such sure
+tell than thank thanks that thats the their theirs them themselves then there
+these they thing things this those though through to too
+under until up us use used using
+very
+want was wasnt way we well were what when where whether which while who whom
+why will with without wont would wouldnt
+yes yet you your yours yourself yourselves
+""".split())
+
+# Under three letters a token is almost always an initial, a unit or noise.
+MIN_TOPIC_TERM = 3
+# How many terms are worth listing. Past a couple of dozen the tail is single
+# mentions, which is a list of coincidences rather than a list of topics.
+TOPIC_LIMIT = 20
+# A ceiling on what is pulled across the wire to be counted, since this is
+# tallied in Python rather than in Postgres. The most recent messages are the
+# ones the window is about, so a truncated sample is still the right sample.
+TOPIC_SAMPLE_LIMIT = 5000
+
+WORD_RE = re.compile(r"[a-z][a-z0-9\'-]*")
+
+
+def singularise(word):
+    """Fold a plural onto its singular so one topic is not counted twice.
+
+    Deliberately blunt - a real stemmer is a dependency and a surprise. The
+    exclusions are the endings where a trailing "s" is part of the word
+    rather than a plural of it, which is what keeps "address", "status" and
+    "analysis" from being filed as "addres", "statu" and "analysi".
+    """
+    if len(word) < 4 or not word.endswith("s"):
+        return word
+
+    if word.endswith(("ss", "us", "is", "as")):
+        return word
+
+    return word[:-1]
+
+
+def topic_terms(messages):
+    """The subjects people raised, ranked by how many of them raised each.
+
+    Counted once per message rather than once per mention. A single frustrated
+    customer writing "delivery" nine times in one paragraph is one person
+    asking about delivery, and letting raw frequency decide would put their
+    afternoon at the top of a fortnight's chart.
+    """
+    counts = {}
+    spellings = {}
+    counted = 0
+
+    for message in messages:
+        seen = set()
+
+        for match in WORD_RE.findall(str(message or "").lower()):
+            word = match.strip("'-")
+            # Apostrophes are dropped for the comparison only. The stopword
+            # list is written without them, and "hasn\'t" is every bit as
+            # empty of subject matter as "hasnt".
+            bare = word.replace("'", "")
+
+            if len(bare) < MIN_TOPIC_TERM or bare in TOPIC_STOPWORDS:
+                continue
+
+            term = singularise(bare)
+
+            if term in TOPIC_STOPWORDS or len(term) < MIN_TOPIC_TERM:
+                continue
+
+            seen.add(term)
+            # The first spelling wins, so a term folded from "orders" is still
+            # shown to a human as a word they recognise.
+            spellings.setdefault(term, word)
+
+        if seen:
+            counted += 1
+
+        for term in seen:
+            counts[term] = counts.get(term, 0) + 1
+
+    ranked = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
+
+    return [
+        {
+            "term": spellings.get(term, term),
+            "questions": total,
+            # Out of the messages that had anything countable in them, not out
+            # of every row: "hi" and "thanks" are not questions this can be a
+            # share of.
+            "share": round(total / counted * 100) if counted else 0,
+        }
+        for term, total in ranked[:TOPIC_LIMIT]
+    ], counted
+
+
+@app.route("/admin/topics", methods=["GET"])
+def admin_topics():
+    """What people keep asking about, rather than how often they ask.
+
+    The chart above this says the assistant was used two hundred times last
+    fortnight. It cannot say that forty of those were about delivery times,
+    which is the number that decides whether the answer belongs on a page
+    instead of in a chat window.
+    """
+    try:
+        days = read_int("days", STATS_DEFAULT_DAYS, 1, STATS_MAX_DAYS)
+        today = datetime.now(timezone.utc).date()
+        since = today - timedelta(days=days - 1)
+
+        response = supabase.table("chat_history") \
+            .select("user_message") \
+            .gte("created_at", f"{since.isoformat()}T00:00:00+00:00") \
+            .order("created_at", desc=True) \
+            .limit(TOPIC_SAMPLE_LIMIT) \
+            .execute()
+
+        records = response.data or []
+        terms, counted = topic_terms(record.get("user_message") for record in records)
+
+        return jsonify({
+            "window_days": days,
+            "messages": len(records),
+            # Messages with nothing countable left after the stopwords - the
+            # greetings and the thank-yous. Reported rather than hidden so the
+            # shares below can be read against the right denominator.
+            "counted": counted,
+            "terms": terms,
+            "truncated": len(records) >= TOPIC_SAMPLE_LIMIT,
+            "generated_at": utc_now_iso(),
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/admin/history/export", methods=["GET"])
 def export_history():
     """EXPORT — the transcript as a CSV file.

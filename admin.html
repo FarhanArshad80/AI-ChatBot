@@ -574,6 +574,61 @@
        so the gaps are visible rather than closed up. */
     .activity-bar.is-empty { background: var(--border); }
 
+    /* Sits directly under the activity strip and reads as its second half:
+       how much, then what about. */
+    .topics {
+      margin-bottom: 14px;
+      padding: 14px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .topics-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .topics-title { font-size: 0.82rem; font-weight: 700; }
+
+    .topics-note {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .topics-list { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    /* Each term carries its own count. A ranked list without numbers hides
+       the difference between a subject raised forty times and one raised
+       twice, which is the difference worth acting on. */
+    .topic-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      font-size: 0.78rem;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.78rem;
+      color: inherit;
+    }
+
+    .topic-chip:hover { border-color: var(--accent); }
+
+    .topic-chip .count {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
     .chat-type-card .icon { font-size: 1.6rem; display: block; margin-bottom: 7px; }
     .chat-type-card .label { font-size: 0.82rem; font-weight: 700; }
     .chat-type-card .desc { font-size: 0.74rem; color: var(--muted); margin-top: 3px; font-family: 'IBM Plex Mono', monospace; }
@@ -589,7 +644,7 @@
     </div>
     <div class="topbar-actions">
       <button class="btn" onclick="window.location.href='index%20.html'">← Chat</button>
-      <button class="btn success" onclick="loadHistory(); loadStats()">↻ Refresh</button>
+      <button class="btn success" onclick="loadHistory(); loadStats(); loadTopics()">↻ Refresh</button>
       <button class="btn primary" onclick="openCreate()">+ New Record</button>
     </div>
   </div>
@@ -650,6 +705,17 @@
         </div>
 
         <div class="activity-chart" id="activity-chart" role="img" aria-label="Records per day"></div>
+      </div>
+
+      <!-- Hidden on the same terms as the strip above, and additionally when
+           there is nothing but greetings in the window: an empty list of
+           topics would suggest nobody asked anything. -->
+      <div class="topics" id="topics" hidden>
+        <div class="topics-head">
+          <span class="topics-title">What people are asking about</span>
+          <span class="topics-note" id="topics-note"></span>
+        </div>
+        <div class="topics-list" id="topics-list"></div>
       </div>
 
       <div class="table-wrap">
@@ -879,6 +945,80 @@
       );
     }
 
+    /* ── TOPICS ── */
+    // Same window as the activity strip, and the same reason for ignoring
+    // the search box: this is the backdrop the filtered table is read
+    // against. Narrowing it to the current search would only tell you which
+    // words appear alongside the one you already typed.
+    async function loadTopics() {
+      const panel = document.getElementById("topics");
+
+      try {
+        const res = await fetch(`${API}/admin/topics?days=${ACTIVITY_DAYS}`);
+        const data = await res.json();
+
+        if (!res.ok || data.error) throw new Error(data.error || "unavailable");
+
+        renderTopics(data);
+      } catch {
+        // Quiet, like the strip above: the records loaded, and an error
+        // about the summary would read as an error about them.
+        panel.hidden = true;
+      }
+    }
+
+    function renderTopics(data) {
+      const panel = document.getElementById("topics");
+      const list = document.getElementById("topics-list");
+      const terms = data.terms || [];
+
+      // A fortnight of nothing but "hi" and "thanks" has no topics in it,
+      // and an empty row of chips would read as a broken panel rather than
+      // as a quiet one.
+      panel.hidden = terms.length === 0;
+
+      if (terms.length === 0) return;
+
+      document.getElementById("topics-note").textContent =
+        `across ${data.counted} of ${data.messages} messages in the last ${data.window_days} days` +
+        (data.truncated ? " (most recent sample)" : "");
+
+      list.innerHTML = "";
+
+      for (const item of terms) {
+        const chip = document.createElement("button");
+
+        chip.type = "button";
+        chip.className = "topic-chip";
+        chip.title = `Search the log for "${item.term}" — raised in ${item.share}% of messages`;
+        // Every chip is a question someone might now want to read the actual
+        // exchanges behind, and the search that finds them is right there.
+        chip.onclick = () => searchFor(item.term);
+
+        const label = document.createElement("span");
+        label.textContent = item.term;
+
+        const count = document.createElement("span");
+        count.className = "count";
+        count.textContent = item.questions;
+
+        chip.append(label, count);
+        list.appendChild(chip);
+      }
+    }
+
+    // Drives the search box rather than querying around it, so the term ends
+    // up visible in the input people already know how to clear.
+    function searchFor(term) {
+      const input = document.getElementById("search-input");
+
+      input.value = term;
+      searchTerm = term;
+      offset = 0;
+      loadHistory();
+      input.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
     function renderPager() {
       const pager = document.getElementById("pager");
       pager.hidden = matchCount <= PAGE_SIZE;
@@ -1095,6 +1235,7 @@
         closeModal("edit-overlay");
         loadHistory();
         loadStats();
+        loadTopics();
       } catch {
         toast("Save failed.", true);
       }
@@ -1108,6 +1249,7 @@
         toast("Record deleted");
         loadHistory();
         loadStats();
+        loadTopics();
       } catch {
         toast("Delete failed.", true);
       }
@@ -1120,6 +1262,7 @@
         toast("All records deleted");
         loadHistory();
         loadStats();
+        loadTopics();
       } catch {
         toast("Failed to delete all.", true);
       }
@@ -1156,6 +1299,7 @@
           toast("New chat started with initial message ✓");
           loadHistory();
           loadStats();
+          loadTopics();
         } catch {
           toast("Chat started, but initial message failed.", true);
         }
@@ -1196,6 +1340,7 @@
     // Init
     loadHistory();
     loadStats();
+    loadTopics();
   </script>
 </body>
 </html>
