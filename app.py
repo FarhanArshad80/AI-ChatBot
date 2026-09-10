@@ -1,10 +1,13 @@
 import csv
 import io
 import json
+import math
 import os
 import re
+import threading
+import time
 import uuid
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from google import genai
@@ -86,6 +89,109 @@ def get_history(key):
         conversations.popitem(last=False)
 
     return history
+
+
+# ─────────────────────────────────────────────
+#  RATE LIMIT
+# ─────────────────────────────────────────────
+
+# Every message is a paid call to a model, made on a key that lives in this
+# process and answers to anyone who can reach the page. Nothing stopped one
+# visitor - or one script, or one tab stuck in a retry loop - from spending
+# the whole month's budget in an afternoon.
+#
+# Two buckets, because either alone is easy to walk around: a session id is
+# whatever the client says it is, and an address is shared by everyone behind
+# one office router. The address bucket is the looser of the two for that
+# reason.
+RATE_WINDOW_SECONDS = 60
+RATE_LIMIT_PER_SESSION = 20
+RATE_LIMIT_PER_ADDRESS = 60
+
+# Buckets are kept in memory like the conversations above, with the same
+# caveat: per-process, and gone on restart. It is a spending guard for a
+# demo, not a security control - anything that has to hold under a determined
+# attacker belongs in front of the app, not inside it.
+MAX_RATE_BUCKETS = 2000
+
+rate_buckets = OrderedDict()
+
+# The check is read-modify-write across a shared dict, and Flask serves these
+# routes from a thread pool. Without the lock two requests arriving together
+# can each read a bucket that is one short of the limit and both be let
+# through.
+rate_lock = threading.Lock()
+
+
+def rate_delay(bucket, limit, now, window=RATE_WINDOW_SECONDS):
+    """How many seconds this caller should wait, or 0 if it may proceed.
+
+    A sliding window rather than a fixed one: a limit that resets on the
+    minute lets a caller spend the whole allowance at 11:59:59 and the whole
+    of the next one a second later.
+    """
+    with rate_lock:
+        stamps = rate_buckets.pop(bucket, None)
+
+        if stamps is None:
+            stamps = deque()
+
+        rate_buckets[bucket] = stamps
+
+        # Everything older than the window has stopped counting against them.
+        cutoff = now - window
+
+        while stamps and stamps[0] <= cutoff:
+            stamps.popleft()
+
+        if len(stamps) >= limit:
+            # Until the oldest call in the window falls out of it. Rounded up
+            # and never below a second, so a client that honours the number
+            # does not come straight back to another refusal.
+            return max(1, math.ceil(stamps[0] + window - now))
+
+        stamps.append(now)
+
+        # Oldest bucket out first. A busy caller's bucket is refreshed on
+        # every request above, so what gets dropped here is somebody who
+        # stopped talking long ago.
+        while len(rate_buckets) > MAX_RATE_BUCKETS:
+            rate_buckets.popitem(last=False)
+
+        return 0
+
+
+def rate_refusal(key):
+    """The response telling a caller to slow down, or None to carry on.
+
+    Checked after the message has been read and found valid, because what is
+    being protected is the cost of answering - a malformed request never
+    reaches the model.
+    """
+    now = time.monotonic()
+
+    for bucket, limit in (
+        (f"session:{key}", RATE_LIMIT_PER_SESSION),
+        # remote_addr is the last hop, which behind a proxy is the proxy. It
+        # is still worth having: it costs nothing when it is wrong and closes
+        # the obvious hole - a client that rolls a new session id per message
+        # - when it is right.
+        (f"address:{request.remote_addr}", RATE_LIMIT_PER_ADDRESS),
+    ):
+        wait = rate_delay(bucket, limit, now)
+
+        if wait:
+            response = jsonify({
+                "error": f"That is a lot of questions at once — try again in {wait} second{'' if wait == 1 else 's'}.",
+                "retry_after": wait,
+            })
+            # Said in a header as well as in prose, so a client can wait the
+            # right length of time without reading the sentence.
+            response.headers["Retry-After"] = str(wait)
+
+            return response, 429
+
+    return None
 
 
 def utc_now_iso():
@@ -265,6 +371,10 @@ def chat():
 
     key = request_session_key()
 
+    too_fast = rate_refusal(key)
+    if too_fast:
+        return too_fast
+
     try:
         reply = clean_text("".join(stream_reply(user_input, get_history(key))))
         saved = remember_turn(user_input, reply, key)
@@ -296,6 +406,15 @@ def chat_stream():
     # Read out here for the same reason the message is: the request context
     # is gone by the time Flask consumes the generator below.
     key = request_session_key()
+
+    # Before the stream opens, so a refusal is a plain 429 the client can
+    # read as one. Once the response has begun there is no status line left
+    # to change, and a rate limit reported inside an event stream is a
+    # message about failure dressed as a successful answer.
+    too_fast = rate_refusal(key)
+    if too_fast:
+        return too_fast
+
     history = get_history(key)
 
     def events():
