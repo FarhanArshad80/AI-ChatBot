@@ -125,6 +125,21 @@
     .time { font-size: 11px; color: #4a4a6a; margin-top: 4px; }
     .time.right { text-align: right; }
 
+    /* Sits in the timestamp line rather than over the bubble: an answer is
+       read far more often than it is copied, and a button hovering on the
+       text would be in the way of the reading. */
+    .copy-btn {
+      margin-left: 8px;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: #4a4a6a;
+      font: inherit;
+      cursor: pointer;
+    }
+    .copy-btn:hover, .copy-btn:focus-visible { color: #c0b8ff; }
+    .copy-btn.copied { color: #5DCAA5; }
+
     /* TYPING */
     .typing-indicator { display: flex; align-items: center; gap: 5px; padding: 14px 16px; }
     .typing-indicator span {
@@ -391,6 +406,48 @@
     if (el) el.remove();
   }
 
+  // A PLM analysis runs to six sections and is usually headed somewhere else
+  // - a report, a ticket, an email to the team. Selecting it by hand means
+  // dragging across a scrolling bubble and picking up the timestamp with it.
+  //
+  // Reads the bubble at the moment of the click rather than when the button
+  // is made, because the button exists from the first word of a streamed
+  // answer and the answer is not finished until the last.
+  function copyButton(bubble) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy-btn';
+    button.textContent = 'Copy';
+    button.setAttribute('aria-label', 'Copy this answer');
+
+    button.addEventListener('click', async () => {
+      const text = bubble.textContent.trim();
+      if (!text) return;
+
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = 'Copied';
+        button.classList.add('copied');
+      } catch (e) {
+        // Refused clipboard (an insecure origin, a denied permission): select
+        // the text instead, so Ctrl+C still gets it in one keystroke.
+        const range = document.createRange();
+        range.selectNodeContents(bubble);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        button.textContent = 'Selected';
+      }
+
+      setTimeout(() => {
+        button.textContent = 'Copy';
+        button.classList.remove('copied');
+      }, 1600);
+    });
+
+    return button;
+  }
+
   // An empty bot bubble to write into as the answer arrives. Text goes in
   // through textContent, so a reply containing < or & renders as itself
   // rather than as markup.
@@ -407,10 +464,13 @@
         <div class="time">${now()}</div>
       </div>`;
 
+    const bubble = row.querySelector('.bubble');
+    row.querySelector('.time').appendChild(copyButton(bubble));
+
     chatBox.appendChild(row);
     chatBox.scrollTop = chatBox.scrollHeight;
 
-    return { row, bubble: row.querySelector('.bubble') };
+    return { row, bubble };
   }
 
   // Swaps the composer between "send" and "stop". They occupy the same slot,
