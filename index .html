@@ -342,6 +342,56 @@
 
   document.getElementById('init-time').textContent = now();
 
+  // The server already remembers this conversation - the session id above
+  // survives a reload, and so does the history the model is given. The page
+  // did not: a refresh, or reopening the tab, showed a blank chat while the
+  // assistant carried on answering with everything above it still in mind.
+  // The next reply would refer back to "the second option" and there was
+  // nothing on screen to say what that had been.
+  //
+  // Only what was said is kept. Error bubbles describe a moment that has
+  // passed, and replaying "Could not reach the backend" on the next visit
+  // would report a problem that may not exist any more.
+  const TRANSCRIPT_KEY = 'plm-chat-transcript';
+  // Well past the server's rolling window, so the screen never forgets
+  // something the model still remembers, and short enough to stay light.
+  const MAX_SAVED_MESSAGES = 60;
+
+  function loadTranscript() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TRANSCRIPT_KEY));
+
+      // Tied to the session it came from. A transcript from another session
+      // is a conversation the server knows nothing about, and showing it
+      // would make the assistant look as though it had forgotten.
+      if (!saved || saved.sessionId !== sessionId || !Array.isArray(saved.messages)) return [];
+
+      return saved.messages.filter(
+        (m) => m && (m.type === 'user' || m.type === 'bot') && typeof m.text === 'string'
+      );
+    } catch (e) {
+      return [];
+    }
+  }
+
+  let transcript = loadTranscript();
+
+  function saveMessage(type, text) {
+    transcript = [...transcript, { type, text, time: now() }].slice(-MAX_SAVED_MESSAGES);
+
+    try {
+      localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify({ sessionId, messages: transcript }));
+    } catch (e) { /* storage unavailable - the chat still works, it just forgets */ }
+  }
+
+  function clearTranscript() {
+    transcript = [];
+
+    try {
+      localStorage.removeItem(TRANSCRIPT_KEY);
+    } catch (e) { /* nothing stored to clear */ }
+  }
+
   // Ping the backend so the header reflects the real connection state
   async function checkBackend() {
     try {
@@ -366,7 +416,7 @@
     return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  function appendMsg(text, type) {
+  function appendMsg(text, type, time = now()) {
     const isUser = type === 'user';
     const row = document.createElement('div');
     row.className = 'msg-row' + (isUser ? ' user' : '');
@@ -380,7 +430,7 @@
       <div class="msg-icon ${isUser ? 'user' : 'bot'}">${isUser ? userIcon : botIcon}</div>
       <div>
         <div class="${bubbleClass}">${escHtml(text)}</div>
-        <div class="time ${isUser ? 'right' : ''}">${now()}</div>
+        <div class="time ${isUser ? 'right' : ''}">${time}</div>
       </div>`;
 
     chatBox.appendChild(row);
@@ -451,7 +501,7 @@
   // An empty bot bubble to write into as the answer arrives. Text goes in
   // through textContent, so a reply containing < or & renders as itself
   // rather than as markup.
-  function startBotMsg() {
+  function startBotMsg(time = now()) {
     const row = document.createElement('div');
     row.className = 'msg-row';
 
@@ -461,7 +511,7 @@
       <div class="msg-icon bot">${botIcon}</div>
       <div>
         <div class="bubble bot"></div>
-        <div class="time">${now()}</div>
+        <div class="time">${time}</div>
       </div>`;
 
     const bubble = row.querySelector('.bubble');
@@ -528,6 +578,7 @@
 
     document.getElementById('suggestions').style.display = 'none';
     appendMsg(msg, 'user');
+    saveMessage('user', msg);
     input.value = '';
     setBusy(true);
     showTyping();
@@ -577,6 +628,8 @@
       if (bubble && !bubble.textContent.trim()) {
         bubble.closest('.msg-row').remove();
         appendMsg('The model returned an empty answer. Try rephrasing.', 'error');
+      } else if (bubble) {
+        saveMessage('bot', bubble.textContent);
       }
     } catch (e) {
       removeTyping();
@@ -587,6 +640,9 @@
       if (e.name === 'AbortError') {
         if (bubble && bubble.textContent.trim()) {
           bubble.textContent += ' …';
+          // Kept as it was shown, cut short. The server holds the full
+          // answer, but the screen should come back the way it was left.
+          saveMessage('bot', bubble.textContent);
           appendMsg('Stopped. The server keeps the full answer in this conversation.', 'error');
         } else {
           if (bubble) bubble.closest('.msg-row').remove();
@@ -617,6 +673,7 @@
         body: JSON.stringify({ session_id: sessionId })
       });
     } catch (e) { /* a cleared screen is still worth something */ }
+    clearTranscript();
     chatBox.innerHTML = '';
     const botIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" fill="#534AB7" opacity="0.4"/><path d="M8 12h8M12 8v8" stroke="#c0b8ff" stroke-width="2" stroke-linecap="round"/></svg>`;
     chatBox.innerHTML = `
@@ -628,6 +685,19 @@
         </div>
       </div>`;
     document.getElementById('suggestions').style.display = 'flex';
+  }
+
+  // Put the conversation back the way it was left, under the greeting.
+  if (transcript.length > 0) {
+    document.getElementById('suggestions').style.display = 'none';
+
+    for (const message of transcript) {
+      if (message.type === 'user') {
+        appendMsg(message.text, 'user', message.time);
+      } else {
+        startBotMsg(message.time).bubble.textContent = message.text;
+      }
+    }
   }
 
   input.addEventListener('keypress', e => {
