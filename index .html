@@ -416,7 +416,32 @@
     return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  function appendMsg(text, type, time = now()) {
+  // Offers the failed question back. A message that did not get through is
+  // the one most likely to be wanted again immediately — the backend was
+  // restarting, the connection dropped, the model returned nothing — and
+  // until now the only way back to it was to retype the whole thing, or to
+  // walk the arrow-key history past it.
+  //
+  // It puts the text in the box rather than sending it. What failed may have
+  // failed because of the question, and a retry that fires on sight gives
+  // nobody the chance to change a word of it first.
+  function retryButton(text) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy-btn';
+    button.textContent = 'Try again';
+    button.setAttribute('aria-label', 'Put that message back in the box');
+
+    button.addEventListener('click', () => {
+      input.value = text;
+      input.focus();
+      input.setSelectionRange(text.length, text.length);
+    });
+
+    return button;
+  }
+
+  function appendMsg(text, type, time = now(), retryText = '') {
     const isUser = type === 'user';
     const row = document.createElement('div');
     row.className = 'msg-row' + (isUser ? ' user' : '');
@@ -432,6 +457,12 @@
         <div class="${bubbleClass}">${escHtml(text)}</div>
         <div class="time ${isUser ? 'right' : ''}">${time}</div>
       </div>`;
+
+    // Only on a failure that has a question behind it. "Stopped before the
+    // answer started" is a choice somebody made, not something to offer back.
+    if (retryText) {
+      row.querySelector('.time').appendChild(retryButton(retryText));
+    }
 
     chatBox.appendChild(row);
     chatBox.scrollTop = chatBox.scrollHeight;
@@ -605,7 +636,7 @@
       for await (const event of readEvents(res)) {
         if (event.error) {
           removeTyping();
-          appendMsg('Error: ' + event.error, 'error');
+          appendMsg('Error: ' + event.error, 'error', now(), msg);
           bubble = null;
           break;
         }
@@ -628,7 +659,7 @@
       // and an empty bubble does not say so.
       if (bubble && !bubble.textContent.trim()) {
         bubble.closest('.msg-row').remove();
-        appendMsg('The model returned an empty answer. Try rephrasing.', 'error');
+        appendMsg('The model returned an empty answer. Try rephrasing.', 'error', now(), msg);
       } else if (bubble) {
         saveMessage('bot', bubble.textContent);
       }
@@ -654,7 +685,9 @@
           e.message === 'Failed to fetch'
             ? 'Could not reach the backend. Is your Flask server running?'
             : e.message,
-          'error'
+          'error',
+          now(),
+          msg
         );
       }
     }
