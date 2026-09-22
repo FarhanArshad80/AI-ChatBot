@@ -73,6 +73,13 @@
       transition: all 0.2s;
     }
     .reset-btn:hover { border-color: #534AB7; color: #c0b8ff; background: #1e1b3a; }
+    /* Nothing to save yet, said by the button rather than by its absence —
+       a control that appears once the first answer lands moves the one
+       beside it, and "Clear chat" is not a button anyone should press by
+       having it slide under the cursor. */
+    .reset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .reset-btn:disabled:hover { border-color: #3a3a5c; color: #7c7ca0; background: transparent; }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
 
     /* MESSAGES */
     .messages {
@@ -250,7 +257,13 @@
         </div>
       </div>
     </div>
-    <button class="reset-btn" onclick="resetChat()">Clear chat</button>
+    <div class="header-actions">
+      <!-- Before the clear, in reading order and in importance: this is the
+           way out of the one action on this page that cannot be undone. -->
+      <button class="reset-btn" id="save-btn" onclick="saveChat()" disabled
+              title="Download this conversation as a text file">Save chat</button>
+      <button class="reset-btn" onclick="resetChat()">Clear chat</button>
+    </div>
   </div>
 
   <!-- MESSAGES -->
@@ -382,6 +395,8 @@
     try {
       localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify({ sessionId, messages: transcript }));
     } catch (e) { /* storage unavailable - the chat still works, it just forgets */ }
+
+    renderSaveState();
   }
 
   function clearTranscript() {
@@ -390,6 +405,62 @@
     try {
       localStorage.removeItem(TRANSCRIPT_KEY);
     } catch (e) { /* nothing stored to clear */ }
+
+    renderSaveState();
+  }
+
+  // Taking the conversation with you.
+  //
+  // "Clear chat" wipes the screen, the stored transcript and the server's
+  // thread, and until now that was the only way to start a new subject — so
+  // the price of the next question was everything answered before it. An
+  // hour of working something out deserves to survive the press that ends
+  // it.
+  //
+  // Plain text rather than JSON: this is written to be read again, pasted
+  // into a document, or sent to somebody. Nothing here needs parsing back.
+  //
+  // Only what was actually said, because that is all the transcript keeps —
+  // error bubbles describe a moment that has already passed.
+  const saveBtn = document.getElementById('save-btn');
+
+  function renderSaveState() {
+    saveBtn.disabled = transcript.length === 0;
+    saveBtn.title = saveBtn.disabled
+      ? 'Nothing to save yet'
+      : `Download this conversation (${transcript.length} messages) as a text file`;
+  }
+
+  function transcriptText() {
+    const header = `Gemini Assistant — conversation of ${new Date().toLocaleString()}`;
+
+    const body = transcript.map(
+      (message) => `[${message.time}] ${message.type === 'user' ? 'You' : 'Assistant'}:\n${message.text}`
+    );
+
+    return [header, '', ...body].join('\n\n');
+  }
+
+  function saveChat() {
+    if (transcript.length === 0) return;
+
+    // Dated rather than numbered: two saves in one session are almost always
+    // the same conversation at two points, and the later one should not be
+    // guessed at from "chat (3)".
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const blob = new Blob([transcriptText()], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `gemini-chat-${stamp}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    // The download has already been handed to the browser by the time this
+    // runs; holding the object URL open any longer only leaks it.
+    URL.revokeObjectURL(url);
   }
 
   // Ping the backend so the header reflects the real connection state
@@ -720,6 +791,8 @@
       </div>`;
     document.getElementById('suggestions').style.display = 'flex';
   }
+
+  renderSaveState();
 
   // Put the conversation back the way it was left, under the greeting.
   if (transcript.length > 0) {
