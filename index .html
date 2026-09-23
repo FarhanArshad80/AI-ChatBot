@@ -162,6 +162,40 @@
     }
 
     /* CHIPS */
+    /* Floats over the foot of the transcript rather than sitting in the
+       layout: it comes and goes as the reader scrolls, and a button that
+       took up a row would push the conversation about every time it did. */
+    .jump-latest {
+      position: absolute;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 0.5px solid #3a3a5c;
+      background: #1e1b3a;
+      color: #c0b8ff;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+      transition: background 0.2s, border-color 0.2s;
+      z-index: 2;
+    }
+    .jump-latest:hover { background: #2a2557; border-color: #534AB7; }
+    .jump-latest[hidden] { display: none; }
+    /* The anchor the pill is positioned against. */
+    .messages-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
     .suggestions {
       display: flex; gap: 8px; flex-wrap: wrap;
       padding: 4px 20px 12px;
@@ -267,6 +301,7 @@
   </div>
 
   <!-- MESSAGES -->
+  <div class="messages-wrap">
   <div class="messages" id="chat-box">
     <div class="msg-row">
       <div class="msg-icon bot">
@@ -280,6 +315,14 @@
         <div class="time" id="init-time"></div>
       </div>
     </div>
+  </div>
+
+    <button class="jump-latest" id="jump-btn" onclick="scrollToLatest()" hidden>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+        <path d="M12 5v14M6 13l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Latest
+    </button>
   </div>
 
   <!-- SUGGESTION CHIPS -->
@@ -317,6 +360,43 @@
   const input = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
   const stopBtn = document.getElementById('stop-btn');
+  const jumpBtn = document.getElementById('jump-btn');
+
+  // Staying at the foot of the transcript, but only for somebody who was
+  // already there.
+  //
+  // Every new line used to drag the view to the bottom, and a six-stage PLM
+  // analysis streams for long enough that reading it as it arrives is the
+  // normal thing to do. Scrolling back to stage two meant being thrown to the
+  // end again a quarter of a second later, every quarter of a second, until
+  // the answer finished.
+  //
+  // A little short of the true bottom counts as the bottom: a reader a line
+  // or two up is still following along, and demanding an exact match would
+  // drop the anchor on a rounding error.
+  const STICK_WITHIN_PX = 64;
+
+  function atBottom() {
+    return chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight <= STICK_WITHIN_PX;
+  }
+
+  function scrollToLatest() {
+    chatBox.scrollTop = chatBox.scrollHeight;
+    jumpBtn.hidden = true;
+  }
+
+  // Called after something has been added, with whether the view was at the
+  // foot before it was. Somebody who has scrolled away is not moved; they are
+  // told there is more, and given the way back.
+  function followTail(wasAtBottom) {
+    if (wasAtBottom) scrollToLatest();
+    else jumpBtn.hidden = false;
+  }
+
+  // Scrolling back down by hand answers the pill's question, so it goes.
+  chatBox.addEventListener('scroll', () => {
+    if (atBottom()) jumpBtn.hidden = true;
+  });
 
   // Held while an answer is streaming so it can be called off. A six-stage
   // PLM analysis runs for a while, and by paragraph two it is often already
@@ -535,8 +615,12 @@
       row.querySelector('.time').appendChild(retryButton(retryText));
     }
 
+    const stick = atBottom();
+
     chatBox.appendChild(row);
-    chatBox.scrollTop = chatBox.scrollHeight;
+    // Sending is itself a statement about where the reader is: nobody presses
+    // send and then expects to stay reading something further up.
+    followTail(stick || isUser);
   }
 
   function showTyping() {
@@ -549,8 +633,11 @@
       <div class="bubble bot" style="padding:0">
         <div class="typing-indicator"><span></span><span></span><span></span></div>
       </div>`;
+
+    const stick = atBottom();
+
     chatBox.appendChild(row);
-    chatBox.scrollTop = chatBox.scrollHeight;
+    followTail(stick);
   }
 
   function removeTyping() {
@@ -619,8 +706,10 @@
     const bubble = row.querySelector('.bubble');
     row.querySelector('.time').appendChild(copyButton(bubble));
 
+    const stick = atBottom();
+
     chatBox.appendChild(row);
-    chatBox.scrollTop = chatBox.scrollHeight;
+    followTail(stick);
 
     return { row, bubble };
   }
@@ -719,8 +808,10 @@
             bubble = startBotMsg().bubble;
           }
 
+          const stick = atBottom();
+
           bubble.textContent += event.delta;
-          chatBox.scrollTop = chatBox.scrollHeight;
+          followTail(stick);
         }
       }
 
@@ -789,6 +880,9 @@
           <div class="time">${now()}</div>
         </div>
       </div>`;
+    // Nothing is below the fold any more, whatever the pill was saying about
+    // the conversation that has just been cleared.
+    scrollToLatest();
     document.getElementById('suggestions').style.display = 'flex';
   }
 
@@ -805,6 +899,11 @@
         startBotMsg(message.time).bubble.textContent = message.text;
       }
     }
+
+    // Each restored bubble is filled after it is placed, so the transcript
+    // goes on growing underneath the view as it is rebuilt. A reload opens
+    // where the conversation was left, which is the end of it.
+    scrollToLatest();
   }
 
   input.addEventListener('keypress', e => {
