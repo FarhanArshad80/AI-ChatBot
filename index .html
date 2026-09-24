@@ -241,6 +241,19 @@
     }
     .input-wrap input::placeholder { color: #4a4a6a; }
 
+    /* Only there near the limit. Most messages are a line long, and a
+       running count under every one of them would be noise about a limit
+       almost nobody comes close to. */
+    .char-count {
+      flex-shrink: 0;
+      margin-left: 10px;
+      font-size: 11px;
+      color: #7c7ca0;
+      white-space: nowrap;
+    }
+    .char-count.full { color: #f09595; }
+    .char-count[hidden] { display: none; }
+
     .send-btn {
       width: 40px; height: 40px; border-radius: 50%;
       background: #534AB7;
@@ -339,6 +352,7 @@
            one enforcing it — this only means the limit is met while typing
            rather than after pressing send. -->
       <input id="user-input" type="text" maxlength="8000" placeholder="Type your message... (↑ for earlier ones)" />
+      <span class="char-count" id="char-count" aria-live="polite" hidden></span>
     </div>
     <button class="send-btn" id="send-btn" onclick="sendMessage()" aria-label="Send message">
       <svg viewBox="0 0 24 24" fill="none">
@@ -585,6 +599,7 @@
 
     button.addEventListener('click', () => {
       input.value = text;
+      renderCharCount();
       input.focus();
       input.setSelectionRange(text.length, text.length);
     });
@@ -771,6 +786,7 @@
     appendMsg(msg, 'user');
     saveMessage('user', msg);
     input.value = '';
+    renderCharCount();
     recallIndex = -1;
     setBusy(true);
     showTyping();
@@ -952,6 +968,7 @@
     // Walking forward past the newest message lands back on an empty box,
     // which is where the walk started.
     input.value = recallIndex === -1 ? '' : history[history.length - 1 - recallIndex];
+    renderCharCount();
     input.setSelectionRange(input.value.length, input.value.length);
   });
 
@@ -960,6 +977,52 @@
   input.addEventListener('input', () => {
     recallIndex = -1;
   });
+
+  // Saying so when a message is about to run into the length limit.
+  //
+  // The box stops at the server's limit, and it stops silently: paste a
+  // long document into it and everything past the limit is dropped with
+  // nothing on screen to say so. The question then goes off missing its
+  // last pages, and the answer is to something other than what was asked.
+  //
+  // The count appears in the last stretch before the limit, and a paste that
+  // did not fit says outright that the end of it was cut off — that is the
+  // case where nobody watching the box would notice.
+  const charCount = document.getElementById('char-count');
+  const COUNT_FROM = Math.floor(input.maxLength * 0.9);
+  let pasteCut = false;
+
+  function renderCharCount() {
+    const length = input.value.length;
+    const full = length >= input.maxLength;
+
+    // A cut paste stays flagged only until the box stops being full; once
+    // something has been taken out, the text in it is a new message.
+    if (!full) pasteCut = false;
+
+    charCount.hidden = length < COUNT_FROM;
+    charCount.classList.toggle('full', full);
+    charCount.textContent = pasteCut
+      ? `Cut off at ${input.maxLength.toLocaleString()}`
+      : `${length.toLocaleString()} / ${input.maxLength.toLocaleString()}`;
+    charCount.title = pasteCut
+      ? 'The pasted text was longer than a message can be, and the end of it was dropped'
+      : '';
+  }
+
+  input.addEventListener('paste', (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    const selected = input.selectionEnd - input.selectionStart;
+    const room = input.maxLength - (input.value.length - selected);
+
+    // The browser trims after this handler returns, so the check is made on
+    // what is about to arrive. It is only a suspicion until then: a single
+    // line box drops the line breaks in a paste, and text that fits once
+    // they are gone leaves the box short of full, which clears the flag.
+    pasteCut = pasted.length > room;
+  });
+
+  input.addEventListener('input', renderCharCount);
 </script>
 
 </body>
