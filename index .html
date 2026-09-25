@@ -557,17 +557,47 @@
     URL.revokeObjectURL(url);
   }
 
-  // Ping the backend so the header reflects the real connection state
+  // Ping the backend so the header reflects the real connection state.
+  //
+  // It used to ask once, on load, and then believe the answer for as long as
+  // the tab stayed open. Open the page before starting Flask — the usual
+  // order when working on it — and the header said "Backend offline" over a
+  // conversation that was going perfectly well; stop the server mid-session
+  // and it went on saying "Online" to every failed send.
+  //
+  // So while it is offline it keeps asking, every few seconds, and stops as
+  // soon as it hears back. While it is online nothing polls: every message
+  // sent is already a check, and its outcome is reported below.
+  const RECHECK_OFFLINE_MS = 5000;
+  let recheckTimer = null;
+
+  function showOnline(model) {
+    clearTimeout(recheckTimer);
+    recheckTimer = null;
+    statusDot.className = 'dot';
+    statusText.textContent = `Online · ${model || 'ready'}`;
+  }
+
+  function showOffline() {
+    statusDot.className = 'dot offline';
+    statusText.textContent = 'Backend offline · retrying';
+
+    if (!recheckTimer) {
+      recheckTimer = setTimeout(() => {
+        recheckTimer = null;
+        checkBackend();
+      }, RECHECK_OFFLINE_MS);
+    }
+  }
+
   async function checkBackend() {
     try {
       const res = await fetch('http://localhost:5000/health');
       if (!res.ok) throw new Error('bad status');
       const data = await res.json();
-      statusDot.className = 'dot';
-      statusText.textContent = `Online · ${data.model || 'ready'}`;
+      showOnline(data.model);
     } catch (e) {
-      statusDot.className = 'dot offline';
-      statusText.textContent = 'Backend offline';
+      showOffline();
     }
   }
 
@@ -803,6 +833,9 @@
         signal: controller.signal
       });
 
+      // Any answer at all, even a refusal, means the server is there.
+      if (statusDot.classList.contains('offline')) checkBackend();
+
       // A refusal before the stream opens still answers in JSON.
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
@@ -859,6 +892,10 @@
           appendMsg('Stopped before the answer started.', 'error');
         }
       } else {
+        // The header should not go on saying "Online" under a message that
+        // has just failed to reach it.
+        if (e.name === 'TypeError') showOffline();
+
         appendMsg(
           e.message === 'Failed to fetch'
             ? 'Could not reach the backend. Is your Flask server running?'
