@@ -1203,6 +1203,24 @@
       document.getElementById("edit-overlay").classList.add("open");
     }
 
+    /* ── WRITES ── */
+    // fetch only rejects when the request never arrives. A 500 from Supabase,
+    // a 400 over a missing field, a 429 from the rate limit — each of those
+    // resolves like a success, and every write below used to report one:
+    // "Record updated ✓" over an edit that had gone nowhere, "All records
+    // deleted" over a table still full.
+    //
+    // Reads the error the server sent, when it sent one, so the toast can
+    // say what went wrong rather than only that something did.
+    async function write(url, options) {
+      const res = await fetch(url, options);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+      return data;
+    }
+
     /* ── SAVE (create or update) ── */
     async function saveRecord() {
       const id = document.getElementById("edit-id").value;
@@ -1217,7 +1235,7 @@
       try {
         if (editMode) {
           // UPDATE
-          await fetch(`${API}/admin/history/${id}`, {
+          await write(`${API}/admin/history/${id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ user_message, bot_response })
@@ -1225,7 +1243,7 @@
           toast("Record updated ✓");
         } else {
           // CREATE
-          await fetch(`${API}/admin/history`, {
+          await write(`${API}/admin/history`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ user_message, bot_response })
@@ -1236,8 +1254,10 @@
         loadHistory();
         loadStats();
         loadTopics();
-      } catch {
-        toast("Save failed.", true);
+      } catch (e) {
+        // The modal stays open, so the text that failed to save is still
+        // there to try again rather than having to be typed a second time.
+        toast(`Save failed: ${e.message}`, true);
       }
     }
 
@@ -1245,26 +1265,26 @@
     async function deleteRecord(id) {
       if (!confirm(`Delete record #${id}?`)) return;
       try {
-        await fetch(`${API}/admin/history/${id}`, { method: "DELETE" });
+        await write(`${API}/admin/history/${id}`, { method: "DELETE" });
         toast("Record deleted");
         loadHistory();
         loadStats();
         loadTopics();
-      } catch {
-        toast("Delete failed.", true);
+      } catch (e) {
+        toast(`Delete failed: ${e.message}`, true);
       }
     }
 
     async function confirmDeleteAll() {
       if (!confirm("Delete ALL records? This cannot be undone.")) return;
       try {
-        await fetch(`${API}/admin/history/all`, { method: "DELETE" });
+        await write(`${API}/admin/history/all`, { method: "DELETE" });
         toast("All records deleted");
         loadHistory();
         loadStats();
         loadTopics();
-      } catch {
-        toast("Failed to delete all.", true);
+      } catch (e) {
+        toast(`Failed to delete all: ${e.message}`, true);
       }
     }
 
@@ -1291,7 +1311,7 @@
       if (msg) {
         // Optionally post the first message immediately
         try {
-          await fetch(`${API}/chat`, {
+          await write(`${API}/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: msg })
@@ -1300,8 +1320,8 @@
           loadHistory();
           loadStats();
           loadTopics();
-        } catch {
-          toast("Chat started, but initial message failed.", true);
+        } catch (e) {
+          toast(`Chat started, but initial message failed: ${e.message}`, true);
         }
       } else {
         toast("New chat session started ✓");
