@@ -359,7 +359,7 @@
         <path d="M5 12h14M13 6l6 6-6 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
-    <button class="send-btn stop-btn" id="stop-btn" onclick="stopAnswer()" aria-label="Stop generating" hidden>
+    <button class="send-btn stop-btn" id="stop-btn" onclick="stopAnswer()" aria-label="Stop generating" title="Stop generating (Esc)" hidden>
       <svg viewBox="0 0 24 24" fill="none">
         <rect x="7" y="7" width="10" height="10" rx="2" fill="white"/>
       </svg>
@@ -771,6 +771,17 @@
   function stopAnswer() {
     if (inFlight) inFlight.abort();
   }
+
+  // Escape stops the answer from the keyboard. The message box is disabled
+  // while an answer streams, so focus has nowhere useful to be, and reaching
+  // for the mouse to find the stop button is the slow way to say "not that".
+  // Listened for on the whole page for the same reason.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && inFlight) {
+      e.preventDefault();
+      stopAnswer();
+    }
+  });
 
   function useChip(el) {
     input.value = el.textContent;
