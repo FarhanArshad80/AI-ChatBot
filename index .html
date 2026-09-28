@@ -207,10 +207,12 @@
       border: 0.5px solid #3a3a5c;
       background: #1a1a2e;
       color: #9090c0;
+      font-family: inherit;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .chip:hover { border-color: #534AB7; color: #c0b8ff; background: #1e1b3a; }
+    .chip:hover, .chip:focus-visible { border-color: #534AB7; color: #c0b8ff; background: #1e1b3a; }
+    .chip:focus-visible { outline: 2px solid #534AB7; outline-offset: 2px; }
 
     /* INPUT */
     .input-area {
@@ -339,10 +341,13 @@
   </div>
 
   <!-- SUGGESTION CHIPS -->
-  <div class="suggestions" id="suggestions">
-    <span class="chip" onclick="useChip(this)">What can you do?</span>
-    <span class="chip" onclick="useChip(this)">Tell me a fun fact</span>
-    <span class="chip" onclick="useChip(this)">Help me write something</span>
+  <!-- Buttons rather than spans, so Tab reaches them and Enter or Space
+       sends one: a suggestion only a mouse can pick is not a suggestion
+       to anybody using the keyboard or a screen reader. -->
+  <div class="suggestions" id="suggestions" role="group" aria-label="Suggested questions">
+    <button type="button" class="chip" onclick="useChip(this)">What can you do?</button>
+    <button type="button" class="chip" onclick="useChip(this)">Tell me a fun fact</button>
+    <button type="button" class="chip" onclick="useChip(this)">Help me write something</button>
   </div>
 
   <!-- INPUT -->
