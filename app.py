@@ -917,16 +917,54 @@ def export_history():
         return jsonify({"error": str(e)}), 500
 
 
+RECORD_FIELDS = ("user_message", "bot_response")
+
+
+def read_record_fields(body, required):
+    """The record text fields from an admin request, or the reason they are unusable.
+
+    Returns (fields, None) or (None, error). A number or null in either field
+    used to reach .strip() and come back as a 500 with a stack trace, and an
+    edit that blanked a field went through and saved an empty record the
+    create route would never have allowed. Both now get the same 400 whether
+    the record is being made or changed.
+    """
+    if not isinstance(body, dict):
+        return None, "Send a JSON object."
+
+    fields = {}
+
+    for name in RECORD_FIELDS:
+        if name not in body:
+            if required:
+                return None, "user_message and bot_response are required"
+            continue
+
+        value = body[name]
+
+        if not isinstance(value, str):
+            return None, f"'{name}' must be a string."
+
+        value = value.strip()
+
+        if not value:
+            return None, f"'{name}' cannot be empty."
+
+        fields[name] = value
+
+    return fields, None
+
+
 @app.route("/admin/history", methods=["POST"])
 def create_history():
     """CREATE — Insert a new chat record manually"""
     try:
-        body = request.json or {}
-        user_message = body.get("user_message", "").strip()
-        bot_response  = body.get("bot_response", "").strip()
+        fields, problem = read_record_fields(request.get_json(silent=True), required=True)
+        if problem:
+            return jsonify({"error": problem}), 400
 
-        if not user_message or not bot_response:
-            return jsonify({"error": "user_message and bot_response are required"}), 400
+        user_message = fields["user_message"]
+        bot_response = fields["bot_response"]
 
         result = supabase.table("chat_history").insert({
             "user_message": user_message,
@@ -944,13 +982,9 @@ def create_history():
 def update_history(record_id):
     """UPDATE — Edit an existing chat record"""
     try:
-        body = request.json or {}
-        updates = {}
-
-        if "user_message" in body:
-            updates["user_message"] = body["user_message"].strip()
-        if "bot_response" in body:
-            updates["bot_response"] = body["bot_response"].strip()
+        updates, problem = read_record_fields(request.get_json(silent=True), required=False)
+        if problem:
+            return jsonify({"error": problem}), 400
 
         if not updates:
             return jsonify({"error": "No fields to update"}), 400
