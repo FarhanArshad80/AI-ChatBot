@@ -780,6 +780,23 @@
     chatBox.setAttribute('aria-busy', String(busy));
   }
 
+  // Saying in the tab title that an answer has come in. A full analysis
+  // takes long enough that the usual thing is to go and do something else
+  // while it is written, and nothing brought anybody back when it was done:
+  // the tab looked the same finished as it did halfway through.
+  //
+  // Only when the page is out of sight, and cleared the moment it is looked
+  // at again, so the title is never flagging something already on screen.
+  const PAGE_TITLE = document.title;
+
+  function flagIfHidden() {
+    if (document.hidden) document.title = `(New answer) ${PAGE_TITLE}`;
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) document.title = PAGE_TITLE;
+  });
+
   function stopAnswer() {
     if (inFlight) inFlight.abort();
   }
@@ -896,6 +913,7 @@
         appendMsg('The model returned an empty answer. Try rephrasing.', 'error', now(), msg);
       } else if (bubble) {
         saveMessage('bot', bubble.textContent);
+        flagIfHidden();
       }
     } catch (e) {
       removeTyping();
