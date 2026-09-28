@@ -978,6 +978,18 @@ def create_history():
         return jsonify({"error": str(e)}), 500
 
 
+def record_missing(record_id):
+    """The 404 for an edit or delete that matched no row.
+
+    Supabase answers an update or delete that matches nothing with an empty
+    list, not an error, so both routes used to report success over a record
+    that was already gone - deleted in another tab, or by "Delete All" a
+    moment earlier. Both hand back the rows they touched, and none touched
+    means there was nothing there to change.
+    """
+    return jsonify({"error": f"Record #{record_id} no longer exists."}), 404
+
+
 @app.route("/admin/history/<int:record_id>", methods=["PUT"])
 def update_history(record_id):
     """UPDATE — Edit an existing chat record"""
@@ -994,6 +1006,9 @@ def update_history(record_id):
             .eq("id", record_id) \
             .execute()
 
+        if not result.data:
+            return record_missing(record_id)
+
         return jsonify({"status": "Updated", "record": result.data})
 
     except Exception as e:
@@ -1004,7 +1019,11 @@ def update_history(record_id):
 def delete_history(record_id):
     """DELETE — Remove a specific chat record"""
     try:
-        supabase.table("chat_history").delete().eq("id", record_id).execute()
+        result = supabase.table("chat_history").delete().eq("id", record_id).execute()
+
+        if not result.data:
+            return record_missing(record_id)
+
         return jsonify({"status": "Deleted"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
