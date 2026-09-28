@@ -936,6 +936,14 @@
   }
 
   async function resetChat() {
+    // Asked first, because nothing here can bring it back: the screen, the
+    // stored transcript and the server's thread all go together. An empty
+    // chat has nothing to lose, so it clears without the question.
+    if (transcript.length > 0 && !confirm(
+      `Clear this conversation (${transcript.length} messages)? ` +
+      'It cannot be brought back — use "Save chat" first to keep a copy.'
+    )) return;
+
     // Clears this conversation on the server too — otherwise the next
     // message would still arrive with everything above it as context.
     try {
