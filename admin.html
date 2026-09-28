@@ -1044,7 +1044,7 @@
     function renderTable(records) {
       const tbody = document.getElementById("table-body");
       if (records.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><span class="icon">📭</span>No records found.</div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><span class="icon">📭</span>${emptyMessage()}</div></td></tr>`;
         return;
       }
 
@@ -1060,6 +1060,32 @@
           </td>
         </tr>
       `).join('');
+    }
+
+    // "No records found" read the same over an empty table as over a search
+    // for a typo, and only one of those is fixed by deleting something from
+    // the search box. Naming the filters in the way says which it is, and the
+    // button beside them takes them away in one go.
+    function emptyMessage() {
+      const filters = [];
+
+      if (searchTerm) filters.push(`matching “${esc(searchTerm)}”`);
+      if (fromDate && toDate) filters.push(`between ${fromDate} and ${toDate}`);
+      else if (fromDate) filters.push(`from ${fromDate} on`);
+      else if (toDate) filters.push(`up to ${toDate}`);
+
+      if (filters.length === 0) return "No records yet.";
+
+      return `No records ${filters.join(" ")}.` +
+        `<br><button class="btn" style="margin:14px auto 0" onclick="clearFilters()">Clear filters</button>`;
+    }
+
+    function clearFilters() {
+      clearTimeout(searchTimer);
+      document.getElementById("search-input").value = "";
+      searchTerm = "";
+      // clearRange resets the page and reloads, for the search as well.
+      clearRange();
     }
 
     function buildSidebar(records) {
