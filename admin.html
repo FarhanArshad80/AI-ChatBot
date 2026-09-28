@@ -769,7 +769,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn" onclick="closeModal('edit-overlay')">Cancel</button>
-        <button class="btn primary" id="modal-save-btn" onclick="saveRecord()">Save Changes</button>
+        <button class="btn primary" id="modal-save-btn" onclick="saveRecord()" title="Ctrl+Enter">Save Changes</button>
       </div>
     </div>
   </div>
@@ -814,7 +814,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn" onclick="closeModal('new-chat-overlay')">Cancel</button>
-        <button class="btn primary" onclick="startNewChat()">Start Chat →</button>
+        <button class="btn primary" onclick="startNewChat()" title="Ctrl+Enter">Start Chat →</button>
       </div>
     </div>
   </div>
@@ -1367,6 +1367,19 @@
 
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') document.querySelectorAll('.overlay').forEach(o => o.classList.remove('open'));
+
+      // Ctrl+Enter (Cmd+Enter on a Mac) submits whichever form is open.
+      // Plain Enter is a new line in these textareas, and a reply is often
+      // several paragraphs, so saving has to be a key the text never needs.
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        if (document.getElementById('edit-overlay').classList.contains('open')) {
+          e.preventDefault();
+          saveRecord();
+        } else if (document.getElementById('new-chat-overlay').classList.contains('open')) {
+          e.preventDefault();
+          startNewChat();
+        }
+      }
     });
 
     /* ── TOAST ── */
