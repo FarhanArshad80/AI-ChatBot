@@ -1288,8 +1288,15 @@
     }
 
     /* ── DELETE ── */
+    // A bare number is not something anyone recognises a record by, and the
+    // row it came from may be scrolled out of view by the time the dialog is
+    // up. Quoting the start of the question says what is about to go.
     async function deleteRecord(id) {
-      if (!confirm(`Delete record #${id}?`)) return;
+      const rec = pageRecords.find(r => r.id === id);
+      const text = (rec?.user_message || "").replace(/\s+/g, " ").trim();
+      const quote = text.length > 80 ? `${text.slice(0, 80)}…` : text;
+
+      if (!confirm(quote ? `Delete record #${id}?\n\n“${quote}”` : `Delete record #${id}?`)) return;
       try {
         await write(`${API}/admin/history/${id}`, { method: "DELETE" });
         toast("Record deleted");
