@@ -1379,8 +1379,16 @@
     async function startNewChat() {
       const msg = document.getElementById("new-chat-msg").value.trim();
 
-      // Reset backend session
-      await fetch(`${API}/reset`, { method: "POST" });
+      // Reset backend session. With the backend down the bare fetch used to
+      // reject out of this function: no toast, the modal left sitting open,
+      // and nothing to say why the button had done nothing. The modal stays
+      // open on failure so the opening message is not lost with it.
+      try {
+        await write(`${API}/reset`, { method: "POST" });
+      } catch (e) {
+        toast(`Could not start a new chat: ${e.message === "Failed to fetch" ? "backend unreachable" : e.message}`, true);
+        return;
+      }
 
       closeModal("new-chat-overlay");
 
