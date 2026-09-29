@@ -750,7 +750,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3 id="modal-title">Edit Record</h3>
-        <button class="close-btn" onclick="closeModal('edit-overlay')">✕</button>
+        <button class="close-btn" onclick="closeEditor()">✕</button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="edit-id" />
@@ -768,7 +768,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn" onclick="closeModal('edit-overlay')">Cancel</button>
+        <button class="btn" onclick="closeEditor()">Cancel</button>
         <button class="btn primary" id="modal-save-btn" onclick="saveRecord()" title="Ctrl+Enter">Save Changes</button>
       </div>
     </div>
@@ -1211,7 +1211,7 @@
       document.getElementById("edit-user").value = "";
       document.getElementById("edit-bot").value = "";
       document.getElementById("edit-time-field").style.display = "none";
-      document.getElementById("edit-overlay").classList.add("open");
+      openEditor();
     }
 
     /* ── EDIT ── */
@@ -1226,7 +1226,7 @@
       document.getElementById("edit-bot").value = rec.bot_response || "";
       document.getElementById("edit-time").value = rec.created_at ? new Date(rec.created_at).toLocaleString() : '';
       document.getElementById("edit-time-field").style.display = "block";
-      document.getElementById("edit-overlay").classList.add("open");
+      openEditor();
     }
 
     /* ── WRITES ── */
@@ -1245,6 +1245,39 @@
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
 
       return data;
+    }
+
+    /* ── UNSAVED CHANGES ── */
+    // Escape, a click outside the modal and Cancel all closed the editor
+    // on the spot, and a reply rewritten over several paragraphs went with
+    // it. Whatever the fields held when the editor opened is kept, and
+    // closing asks first only when something has actually changed.
+    let editSnapshot = null;
+
+    function editorFields() {
+      return {
+        user: document.getElementById("edit-user").value,
+        bot: document.getElementById("edit-bot").value
+      };
+    }
+
+    function openEditor() {
+      editSnapshot = editorFields();
+      document.getElementById("edit-overlay").classList.add("open");
+    }
+
+    function editorDirty() {
+      if (!editSnapshot) return false;
+
+      const now = editorFields();
+      return now.user !== editSnapshot.user || now.bot !== editSnapshot.bot;
+    }
+
+    function closeEditor() {
+      if (editorDirty() && !confirm("Discard your changes to this record?")) return;
+
+      editSnapshot = null;
+      closeModal("edit-overlay");
     }
 
     /* ── SAVE (create or update) ── */
@@ -1276,6 +1309,7 @@
           });
           toast("Record created ✓");
         }
+        editSnapshot = null;
         closeModal("edit-overlay");
         loadHistory();
         loadStats();
@@ -1377,12 +1411,17 @@
 
     document.querySelectorAll('.overlay').forEach(o => {
       o.addEventListener('click', e => {
-        if (e.target === o) o.classList.remove('open');
+        if (e.target !== o) return;
+        if (o.id === 'edit-overlay') closeEditor();
+        else o.classList.remove('open');
       });
     });
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') document.querySelectorAll('.overlay').forEach(o => o.classList.remove('open'));
+      if (e.key === 'Escape') {
+        closeModal('new-chat-overlay');
+        if (document.getElementById('edit-overlay').classList.contains('open')) closeEditor();
+      }
 
       // Ctrl+Enter (Cmd+Enter on a Mac) submits whichever form is open.
       // Plain Enter is a new line in these textareas, and a reply is often
