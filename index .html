@@ -812,6 +812,16 @@
     }
   });
 
+  // Closing or reloading the tab mid-answer throws away whatever has not
+  // arrived yet, and a slip of Ctrl+W or F5 is the usual way it happens.
+  // The browser asks first while an answer is still being written; once it
+  // has finished, the transcript is saved and leaving costs nothing.
+  window.addEventListener('beforeunload', (e) => {
+    if (!inFlight) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
   function useChip(el) {
     input.value = el.textContent;
     document.getElementById('suggestions').style.display = 'none';
