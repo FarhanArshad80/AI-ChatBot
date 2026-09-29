@@ -1309,7 +1309,16 @@
     }
 
     async function confirmDeleteAll() {
-      if (!confirm("Delete ALL records? This cannot be undone.")) return;
+      // The button sits beside the search box and the date range, which
+      // makes it read as "delete what I am looking at". It is not: the
+      // endpoint empties the whole table. Said outright while a filter is
+      // on, and with the real count when one is not.
+      const narrowed = Boolean(searchTerm || fromDate || toDate);
+      const question = narrowed
+        ? `Delete ALL records in the table — not just the ${matchCount} matching the current filter?`
+        : `Delete all ${matchCount} record${matchCount !== 1 ? 's' : ''}?`;
+
+      if (!confirm(`${question} This cannot be undone.`)) return;
       try {
         await write(`${API}/admin/history/all`, { method: "DELETE" });
         toast("All records deleted");
