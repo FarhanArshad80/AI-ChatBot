@@ -310,7 +310,7 @@
       <!-- Before the clear, in reading order and in importance: this is the
            way out of the one action on this page that cannot be undone. -->
       <button class="reset-btn" id="save-btn" onclick="saveChat()" disabled
-              title="Download this conversation as a text file">Save chat</button>
+              title="Download this conversation as a text file (Ctrl+S)">Save chat</button>
       <button class="reset-btn" onclick="resetChat()">Clear chat</button>
     </div>
   </div>
@@ -530,7 +530,7 @@
     saveBtn.disabled = transcript.length === 0;
     saveBtn.title = saveBtn.disabled
       ? 'Nothing to save yet'
-      : `Download this conversation (${transcript.length} messages) as a text file`;
+      : `Download this conversation (${transcript.length} messages) as a text file (Ctrl+S)`;
   }
 
   function transcriptText() {
@@ -564,6 +564,19 @@
     // runs; holding the object URL open any longer only leaks it.
     URL.revokeObjectURL(url);
   }
+
+  // Ctrl+S (Cmd+S on a Mac) is where the hand goes to keep something, and
+  // on this page it used to save the page's own HTML — an empty chat shell
+  // with none of the conversation in it. It now saves the conversation.
+  // With nothing said yet the browser keeps the key, since there is no
+  // transcript to offer instead.
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+    if (transcript.length === 0) return;
+
+    e.preventDefault();
+    saveChat();
+  });
 
   // Ping the backend so the header reflects the real connection state.
   //
