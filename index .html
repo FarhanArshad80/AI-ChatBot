@@ -1132,6 +1132,31 @@
   });
 
   input.addEventListener('input', renderCharCount);
+
+  // Typing a message from anywhere on the page. Copying an answer, picking
+  // a suggestion or scrolling back to reread something all leave focus off
+  // the message box, and the next thing typed used to go nowhere: the first
+  // words of the follow-up were lost until somebody clicked back into it.
+  //
+  // A plain character typed while nothing else takes text now moves focus
+  // to the box, and the browser delivers the keystroke there. Shortcuts,
+  // Space (which presses buttons and scrolls) and keys aimed at another
+  // field are left alone.
+  function takesText(el) {
+    if (!el || !el.tagName) return false;
+    return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+  }
+
+  function shouldRedirectTyping(e, target) {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return false;
+    if (e.key.length !== 1 || e.key === ' ') return false;
+    return !takesText(target);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (input.disabled || document.activeElement === input) return;
+    if (shouldRedirectTyping(e, e.target)) input.focus();
+  });
 </script>
 
 </body>
