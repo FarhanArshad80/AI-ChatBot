@@ -491,8 +491,8 @@
 
   let transcript = loadTranscript();
 
-  function saveMessage(type, text) {
-    transcript = [...transcript, { type, text, time: now() }].slice(-MAX_SAVED_MESSAGES);
+  function saveMessage(type, text, time = now()) {
+    transcript = [...transcript, { type, text, time }].slice(-MAX_SAVED_MESSAGES);
 
     try {
       localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify({ sessionId, messages: transcript }));
@@ -626,6 +626,17 @@
 
   function now() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // How long an answer took, said under it. A full analysis can run for
+  // most of a minute and a short reply for a second or two, and with only a
+  // clock time on each bubble there was no telling a slow backend from a
+  // long answer, or whether the last change made things any quicker.
+  function formatDuration(ms) {
+    const seconds = Math.round(ms / 1000);
+    if (seconds < 1) return 'under 1s';
+    if (seconds < 60) return `${seconds}s`;
+    return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
   }
 
   function escHtml(t) {
@@ -885,6 +896,7 @@
     showTyping();
 
     let bubble = null;
+    const startedAt = performance.now();
     const controller = new AbortController();
     inFlight = controller;
 
@@ -935,7 +947,11 @@
         bubble.closest('.msg-row').remove();
         appendMsg('The model returned an empty answer. Try rephrasing.', 'error', now(), msg);
       } else if (bubble) {
-        saveMessage('bot', bubble.textContent);
+        // Written into the timestamp line and saved with it, so the figure
+        // comes back after a reload and goes out with a saved transcript.
+        const stamp = bubble.nextElementSibling.firstChild;
+        stamp.textContent = `${stamp.textContent.trim()} · took ${formatDuration(performance.now() - startedAt)}`;
+        saveMessage('bot', bubble.textContent, stamp.textContent);
         flagIfHidden();
       }
     } catch (e) {
