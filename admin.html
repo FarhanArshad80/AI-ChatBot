@@ -670,7 +670,7 @@
       <div class="content-toolbar">
         <div class="search-wrap">
           <span class="search-icon">🔍</span>
-          <input id="search-input" type="text" placeholder="Search messages..." oninput="filterTable()" />
+          <input id="search-input" type="text" placeholder="Search messages... ( / )" oninput="filterTable()" />
         </div>
         <div class="range-wrap">
           <label for="from-input">from</label>
@@ -1423,6 +1423,37 @@
         if (o.id === 'edit-overlay') closeEditor();
         else o.classList.remove('open');
       });
+    });
+
+    // "/" jumps to the search box from anywhere on the page, the way it does
+    // on most sites with a log to dig through, and Escape inside the box
+    // empties it and brings back every record. Looking something up used to
+    // mean reaching for the mouse first, and clearing a search meant
+    // selecting the term and deleting it by hand.
+    function anyModalOpen() {
+      return !!document.querySelector('.overlay.open');
+    }
+
+    function typingInField(el) {
+      return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+    }
+
+    document.addEventListener('keydown', e => {
+      const search = document.getElementById('search-input');
+
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey
+          && !typingInField(e.target) && !anyModalOpen()) {
+        e.preventDefault();
+        search.focus();
+        search.select();
+        return;
+      }
+
+      if (e.key === 'Escape' && e.target === search && search.value) {
+        e.preventDefault();
+        search.value = '';
+        filterTable();
+      }
     });
 
     document.addEventListener('keydown', e => {
