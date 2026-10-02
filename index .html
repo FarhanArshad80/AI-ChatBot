@@ -267,6 +267,7 @@
     .send-btn:hover { background: #3C3489; }
     .send-btn:active { transform: scale(0.93); }
     .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .send-btn:disabled:hover { background: #534AB7; }
     .send-btn svg { width: 16px; height: 16px; }
     .send-btn[hidden] { display: none; }
 
@@ -667,6 +668,7 @@
     button.addEventListener('click', () => {
       input.value = text;
       renderCharCount();
+      renderSendState();
       input.focus();
       input.setSelectionRange(text.length, text.length);
     });
@@ -896,6 +898,7 @@
     saveMessage('user', msg);
     input.value = '';
     renderCharCount();
+    renderSendState();
     recallIndex = -1;
     setBusy(true);
     showTyping();
@@ -1111,6 +1114,7 @@
     // which is where the walk started.
     input.value = recallIndex === -1 ? '' : history[history.length - 1 - recallIndex];
     renderCharCount();
+    renderSendState();
     input.setSelectionRange(input.value.length, input.value.length);
   });
 
@@ -1165,6 +1169,16 @@
   });
 
   input.addEventListener('input', renderCharCount);
+
+  // Send looked ready with nothing in the box, and pressing it did nothing
+  // at all — no message, no error, no sign the click had registered. It is
+  // greyed out until there is something to send, which also says why.
+  function renderSendState() {
+    sendBtn.disabled = !input.value.trim();
+  }
+
+  input.addEventListener('input', renderSendState);
+  renderSendState();
 
   // Typing a message from anywhere on the page. Copying an answer, picking
   // a suggestion or scrolling back to reread something all leave focus off
