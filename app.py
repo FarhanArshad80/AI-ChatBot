@@ -260,18 +260,25 @@ def stream_reply(user_input, history):
             yield chunk.text
 
 
-def remember_turn(user_input, reply, key):
+def remember_turn(user_input, reply, key, asked_in=None):
     """Record one exchange in this session's memory and in Supabase.
 
     Trimming in whole pairs keeps user/model roles alternating, which the API
     expects. The model has already answered by the time this runs, so a
     storage outage costs the transcript, not the reply.
-    """
-    history = get_history(key)
 
-    history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
-    history.append(types.Content(role="model", parts=[types.Part.from_text(text=reply)]))
-    del history[:-2 * MAX_HISTORY_TURNS]
+    `asked_in` is the history the question was put to. If the session has
+    been reset since then, that list is no longer the session's, and the
+    turn belongs to the conversation that was cleared: putting it into the
+    fresh one would hand the model an exchange the person had just thrown
+    away. It is still logged to Supabase, because it was still said.
+    """
+    if asked_in is None or conversations.get(key) is asked_in:
+        history = get_history(key)
+
+        history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
+        history.append(types.Content(role="model", parts=[types.Part.from_text(text=reply)]))
+        del history[:-2 * MAX_HISTORY_TURNS]
 
     try:
         supabase.table("chat_history").insert({
@@ -376,8 +383,9 @@ def chat():
         return too_fast
 
     try:
-        reply = clean_text("".join(stream_reply(user_input, get_history(key))))
-        saved = remember_turn(user_input, reply, key)
+        history = get_history(key)
+        reply = clean_text("".join(stream_reply(user_input, history)))
+        saved = remember_turn(user_input, reply, key, history)
 
         # Echoed back so a caller that arrived without one can adopt the
         # session it was just given instead of starting over on every turn.
@@ -430,7 +438,7 @@ def chat_stream():
                 return False
 
             recorded = True
-            return remember_turn(user_input, clean_text("".join(pieces)), key)
+            return remember_turn(user_input, clean_text("".join(pieces)), key, history)
 
         try:
             for piece in stream_reply(user_input, history):

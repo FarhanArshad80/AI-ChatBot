@@ -425,6 +425,11 @@
   // clear the question was the wrong one.
   let inFlight = null;
 
+  // Bumped by "Clear chat". An answer still arriving when the chat is
+  // cleared belongs to the conversation that was thrown away, and checking
+  // this tells it not to write itself back into the new one.
+  let chatGeneration = 0;
+
   const statusDot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
 
@@ -898,6 +903,7 @@
     let bubble = null;
     const startedAt = performance.now();
     const controller = new AbortController();
+    const generation = chatGeneration;
     inFlight = controller;
 
     try {
@@ -961,7 +967,11 @@
       // on screen and is marked as cut short, rather than the partial answer
       // disappearing as if nothing had been said.
       if (e.name === 'AbortError') {
-        if (bubble && bubble.textContent.trim()) {
+        // Stopped by "Clear chat": the conversation it was part of is gone,
+        // so there is nothing to keep and nobody to tell it stopped.
+        if (generation !== chatGeneration) {
+          if (bubble) bubble.closest('.msg-row').remove();
+        } else if (bubble && bubble.textContent.trim()) {
           bubble.textContent += ' …';
           // Kept as it was shown, cut short. The server holds the full
           // answer, but the screen should come back the way it was left.
@@ -1000,6 +1010,13 @@
       `Clear this conversation (${transcript.length} messages)? ` +
       'It cannot be brought back — use "Save chat" first to keep a copy.'
     )) return;
+
+    // An answer still being written is stopped first. Left running, it went
+    // on filling a bubble after the clear and was saved when it finished,
+    // so the "fresh start" came back on the next reload with the old answer
+    // in it.
+    chatGeneration += 1;
+    stopAnswer();
 
     // Clears this conversation on the server too — otherwise the next
     // message would still arrive with everything above it as context.
