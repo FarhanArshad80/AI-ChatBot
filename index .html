@@ -897,6 +897,7 @@
     appendMsg(msg, 'user');
     saveMessage('user', msg);
     input.value = '';
+    saveDraft();
     renderCharCount();
     renderSendState();
     recallIndex = -1;
@@ -1204,6 +1205,36 @@
     if (input.disabled || document.activeElement === input) return;
     if (shouldRedirectTyping(e, e.target)) input.focus();
   });
+
+  // Keeping a half-written message across a reload.
+  //
+  // The conversation already comes back after a refresh, but the message
+  // being typed did not: reloading to bring the backend back, or closing the
+  // tab by accident, threw away a paragraph that had not been sent yet.
+  //
+  // Saved as it is typed, and again as the page goes away so text put in the
+  // box by "Try again" or the arrow keys is kept too. An empty box removes
+  // the draft, so a sent message does not come back after it was sent.
+  const DRAFT_KEY = 'plm-chat.draft';
+
+  function saveDraft() {
+    try {
+      if (input.value.trim()) localStorage.setItem(DRAFT_KEY, input.value);
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch (e) { /* storage unavailable - the draft just does not survive */ }
+  }
+
+  input.addEventListener('input', saveDraft);
+  window.addEventListener('pagehide', saveDraft);
+
+  try {
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft && !input.value) {
+      input.value = draft.slice(0, input.maxLength);
+      renderCharCount();
+      renderSendState();
+    }
+  } catch (e) { /* nothing to bring back */ }
 </script>
 
 </body>
