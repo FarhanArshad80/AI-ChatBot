@@ -742,6 +742,8 @@
     button.className = 'copy-btn';
     button.textContent = 'Copy';
     button.setAttribute('aria-label', 'Copy this answer');
+    button.title = 'Copy this answer (Alt+C copies the latest)';
+    button.dataset.copy = 'answer';
 
     button.addEventListener('click', async () => {
       const text = bubble.textContent.trim();
@@ -841,6 +843,22 @@
       e.preventDefault();
       stopAnswer();
     }
+  });
+
+  // Alt+C copies the latest answer without leaving the keyboard. The hand is
+  // in the message box nearly all the time, and reaching for the small Copy
+  // link under the last bubble was the one step that needed the mouse. It
+  // goes through that same button, so it says "Copied" in the same place.
+  // Matched on e.code so a Mac's Option+C does not type a "ç" first.
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyC' || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+
+    const buttons = chatBox.querySelectorAll('[data-copy="answer"]');
+    const latest = buttons[buttons.length - 1];
+    if (!latest) return;
+
+    e.preventDefault();
+    latest.click();
   });
 
   // Closing or reloading the tab mid-answer throws away whatever has not
