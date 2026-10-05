@@ -977,8 +977,11 @@
       } else if (bubble) {
         // Written into the timestamp line and saved with it, so the figure
         // comes back after a reload and goes out with a saved transcript.
+        // The length beside the time: "took 9s" reads very differently for
+        // forty words than for six hundred.
         const stamp = bubble.nextElementSibling.firstChild;
-        stamp.textContent = `${stamp.textContent.trim()} · took ${formatDuration(performance.now() - startedAt)}`;
+        const words = bubble.textContent.trim().split(/\s+/).length;
+        stamp.textContent = `${stamp.textContent.trim()} · took ${formatDuration(performance.now() - startedAt)} · ${words} word${words === 1 ? '' : 's'}`;
         saveMessage('bot', bubble.textContent, stamp.textContent);
         flagIfHidden();
       }
