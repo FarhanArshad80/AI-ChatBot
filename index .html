@@ -310,7 +310,7 @@
     <div class="header-actions">
       <!-- Before the clear, in reading order and in importance: this is the
            way out of the one action on this page that cannot be undone. -->
-      <button class="reset-btn" id="save-btn" onclick="saveChat()" disabled
+      <button class="reset-btn" id="save-btn" onclick="saveChat(event.shiftKey)" disabled
               title="Download this conversation as a text file (Ctrl+S)">Save chat</button>
       <button class="reset-btn" onclick="resetChat()">Clear chat</button>
     </div>
@@ -536,7 +536,7 @@
     saveBtn.disabled = transcript.length === 0;
     saveBtn.title = saveBtn.disabled
       ? 'Nothing to save yet'
-      : `Download this conversation (${transcript.length} messages) as a text file (Ctrl+S)`;
+      : `Download this conversation (${transcript.length} messages) as a text file (Ctrl+S) — Shift-click or Ctrl+Shift+S for Markdown`;
   }
 
   function transcriptText() {
@@ -549,19 +549,34 @@
     return [header, '', ...body].join('\n\n');
   }
 
-  function saveChat() {
+  // The same conversation as Markdown, for pasting into notes or a README
+  // where the answers' own lists and code blocks keep their shape. Each
+  // speaker is a heading so the file can be skimmed by turn.
+  function transcriptMarkdown() {
+    const header = `# Gemini Assistant — conversation of ${new Date().toLocaleString()}`;
+
+    const body = transcript.map(
+      (message) => `### ${message.type === 'user' ? 'You' : 'Assistant'} · ${message.time}\n\n${message.text}`
+    );
+
+    return [header, ...body].join('\n\n') + '\n';
+  }
+
+  function saveChat(markdown = false) {
     if (transcript.length === 0) return;
 
     // Dated rather than numbered: two saves in one session are almost always
     // the same conversation at two points, and the later one should not be
     // guessed at from "chat (3)".
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-    const blob = new Blob([transcriptText()], { type: 'text/plain;charset=utf-8' });
+    const blob = markdown
+      ? new Blob([transcriptMarkdown()], { type: 'text/markdown;charset=utf-8' })
+      : new Blob([transcriptText()], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
 
     link.href = url;
-    link.download = `gemini-chat-${stamp}.txt`;
+    link.download = `gemini-chat-${stamp}.${markdown ? 'md' : 'txt'}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -577,11 +592,12 @@
   // With nothing said yet the browser keeps the key, since there is no
   // transcript to offer instead.
   document.addEventListener('keydown', (e) => {
-    if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+    if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
     if (transcript.length === 0) return;
 
+    // With Shift it is the Markdown copy.
     e.preventDefault();
-    saveChat();
+    saveChat(e.shiftKey);
   });
 
   // Ping the backend so the header reflects the real connection state.
