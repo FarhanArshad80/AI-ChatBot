@@ -360,7 +360,7 @@
       <!-- Matches MAX_MESSAGE_CHARS on the server. The server is still the
            one enforcing it — this only means the limit is met while typing
            rather than after pressing send. -->
-      <input id="user-input" type="text" maxlength="8000" placeholder="Type your message... (↑ for earlier ones)" />
+      <input id="user-input" type="text" maxlength="8000" placeholder="Type your message... (↑ for earlier ones, Esc to clear)" />
       <span class="char-count" id="char-count" aria-live="polite" hidden></span>
     </div>
     <button class="send-btn" id="send-btn" onclick="sendMessage()" aria-label="Send message">
@@ -1217,6 +1217,22 @@
 
   input.addEventListener('input', renderSendState);
   renderSendState();
+
+  // Escape empties the message box. Starting over on a question meant
+  // selecting all of it and deleting it, and a recalled message that turned
+  // out to be the wrong one had to be walked back past with the arrows.
+  // While an answer streams the box is disabled and Escape stops the answer
+  // instead, so the two never meet.
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.isComposing || !input.value) return;
+
+    e.preventDefault();
+    input.value = '';
+    recallIndex = -1;
+    saveDraft();
+    renderCharCount();
+    renderSendState();
+  });
 
   // Typing a message from anywhere on the page. Copying an answer, picking
   // a suggestion or scrolling back to reread something all leave focus off
