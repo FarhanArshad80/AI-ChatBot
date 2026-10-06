@@ -715,6 +715,16 @@
       row.querySelector('.time').appendChild(retryButton(retryText));
     }
 
+    // Under each of your own messages, the way back to it for somebody
+    // holding the mouse: the arrow-key history does the same from the
+    // keyboard, but only by walking past everything sent since.
+    if (isUser) {
+      const edit = retryButton(text);
+      edit.textContent = 'Edit';
+      edit.title = 'Put this message back in the box to change and send again';
+      row.querySelector('.time').appendChild(edit);
+    }
+
     const stick = atBottom();
 
     chatBox.appendChild(row);
