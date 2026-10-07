@@ -336,7 +336,7 @@
     </div>
   </div>
 
-    <button class="jump-latest" id="jump-btn" onclick="scrollToLatest()" hidden>
+    <button class="jump-latest" id="jump-btn" onclick="scrollToLatest()" title="Jump to the latest message (End)" hidden>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
         <path d="M12 5v14M6 13l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
@@ -419,6 +419,17 @@
   // Scrolling back down by hand answers the pill's question, so it goes.
   chatBox.addEventListener('scroll', () => {
     if (atBottom()) jumpBtn.hidden = true;
+  });
+
+  // End does what the "Latest" pill does, from the keyboard. Left alone in
+  // anything that takes text, where End moves the caret to the end of the
+  // line instead.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'End' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    if (takesText(e.target)) return;
+
+    e.preventDefault();
+    scrollToLatest();
   });
 
   // Held while an answer is streaming so it can be called off. A six-stage
