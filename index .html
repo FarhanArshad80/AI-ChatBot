@@ -312,7 +312,7 @@
            way out of the one action on this page that cannot be undone. -->
       <button class="reset-btn" id="save-btn" onclick="saveChat(event.shiftKey)" disabled
               title="Download this conversation as a text file (Ctrl+S)">Save chat</button>
-      <button class="reset-btn" onclick="resetChat()">Clear chat</button>
+      <button class="reset-btn" onclick="resetChat()" title="Start a new conversation (Alt+L)">Clear chat</button>
     </div>
   </div>
 
@@ -896,6 +896,17 @@
 
     e.preventDefault();
     latest.click();
+  });
+
+  // Alt+L starts a new conversation without the mouse. It goes through the
+  // same resetChat as the button, so the "cannot be brought back" question
+  // is still asked first. Matched on e.code so a Mac's Option+L does not
+  // type a "¬" into the box.
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyL' || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+
+    e.preventDefault();
+    resetChat();
   });
 
   // Closing or reloading the tab mid-answer throws away whatever has not
