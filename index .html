@@ -734,6 +734,15 @@
       edit.textContent = 'Edit';
       edit.title = 'Put this message back in the box to change and send again';
       row.querySelector('.time').appendChild(edit);
+
+      // A question that got a good answer is often worth asking somewhere
+      // else too. Marked as a question so Alt+C still finds the latest
+      // answer, not the last thing sent.
+      const copy = copyButton(row.querySelector('.bubble'));
+      copy.dataset.copy = 'question';
+      copy.setAttribute('aria-label', 'Copy this message');
+      copy.title = 'Copy this message';
+      row.querySelector('.time').appendChild(copy);
     }
 
     const stick = atBottom();
