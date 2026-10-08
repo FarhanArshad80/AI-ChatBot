@@ -587,7 +587,15 @@
     const link = document.createElement('a');
 
     link.href = url;
-    link.download = `gemini-chat-${stamp}.${markdown ? 'md' : 'txt'}`;
+    // Named after the first question as well, so a folder of saved chats
+    // can be told apart without opening each one. Cut to a few words and to
+    // characters every file system accepts.
+    const first = transcript.find((m) => m.type === 'user');
+    const slug = first
+      ? first.text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 6).join('-')
+      : '';
+
+    link.download = `gemini-chat-${slug ? `${slug}-` : ''}${stamp}.${markdown ? 'md' : 'txt'}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
