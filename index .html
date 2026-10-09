@@ -1238,9 +1238,12 @@
     charCount.textContent = pasteCut
       ? `Cut off at ${input.maxLength.toLocaleString()}`
       : `${length.toLocaleString()} / ${input.maxLength.toLocaleString()}`;
+    // Characters are what the limit counts, but words are how a message is
+    // usually judged long or short, so hovering gives those too.
+    const words = input.value.trim().split(/\s+/).filter(Boolean).length;
     charCount.title = pasteCut
       ? 'The pasted text was longer than a message can be, and the end of it was dropped'
-      : '';
+      : `${words.toLocaleString()} ${words === 1 ? 'word' : 'words'}`;
   }
 
   input.addEventListener('paste', (e) => {
