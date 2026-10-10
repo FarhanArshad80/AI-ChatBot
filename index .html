@@ -638,11 +638,15 @@
     recheckTimer = null;
     statusDot.className = 'dot';
     statusText.textContent = `Online · ${model || 'ready'}`;
+    // "Online" is only as true as the last time it was asked; hovering says
+    // when that was.
+    statusText.title = `Last checked at ${now()}`;
   }
 
   function showOffline() {
     statusDot.className = 'dot offline';
     statusText.textContent = 'Backend offline · retrying';
+    statusText.title = `Last tried at ${now()}`;
 
     if (!recheckTimer) {
       recheckTimer = setTimeout(() => {
