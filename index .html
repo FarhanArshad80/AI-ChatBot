@@ -432,6 +432,18 @@
     scrollToLatest();
   });
 
+  // Home is End's opposite: back to the start of the conversation, where
+  // the question that set it going usually is. Left alone in anything that
+  // takes text for the same reason.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Home' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    if (takesText(e.target)) return;
+
+    e.preventDefault();
+    chatBox.scrollTop = 0;
+    if (!atBottom()) jumpBtn.hidden = false;
+  });
+
   // Held while an answer is streaming so it can be called off. A six-stage
   // PLM analysis runs for a while, and by paragraph two it is often already
   // clear the question was the wrong one.
