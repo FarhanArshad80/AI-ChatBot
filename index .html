@@ -1000,6 +1000,7 @@
     renderCharCount();
     renderSendState();
     recallIndex = -1;
+    input.title = '';
     setBusy(true);
     showTyping();
 
@@ -1216,6 +1217,11 @@
     // Walking forward past the newest message lands back on an empty box,
     // which is where the walk started.
     input.value = recallIndex === -1 ? '' : history[history.length - 1 - recallIndex];
+    // Where the walk has got to, counted back from the newest, so a long
+    // history says how much further there is to go.
+    input.title = recallIndex === -1
+      ? ''
+      : `Sent message ${recallIndex + 1} of ${history.length}, newest first`;
     renderCharCount();
     renderSendState();
     input.setSelectionRange(input.value.length, input.value.length);
@@ -1225,6 +1231,7 @@
   // the next arrow press cannot throw the edit away.
   input.addEventListener('input', () => {
     recallIndex = -1;
+    input.title = '';
   });
 
   // Saying so when a message is about to run into the length limit.
@@ -1297,6 +1304,7 @@
     e.preventDefault();
     input.value = '';
     recallIndex = -1;
+    input.title = '';
     saveDraft();
     renderCharCount();
     renderSendState();
