@@ -562,8 +562,17 @@
       : `Download this conversation (${transcript.length} messages) as a text file (Ctrl+S) — Shift-click or Ctrl+Shift+S for Markdown`;
   }
 
+  // How long the conversation is, said under the header so a saved file
+  // shows its size before anyone scrolls through it.
+  function transcriptSummary() {
+    const asked = transcript.filter((m) => m.type === 'user').length;
+    const answered = transcript.length - asked;
+
+    return `${asked} question${asked === 1 ? '' : 's'}, ${answered} answer${answered === 1 ? '' : 's'}`;
+  }
+
   function transcriptText() {
-    const header = `Gemini Assistant — conversation of ${new Date().toLocaleString()}`;
+    const header = `Gemini Assistant — conversation of ${new Date().toLocaleString()}\n${transcriptSummary()}`;
 
     const body = transcript.map(
       (message) => `[${message.time}] ${message.type === 'user' ? 'You' : 'Assistant'}:\n${message.text}`
@@ -576,7 +585,7 @@
   // where the answers' own lists and code blocks keep their shape. Each
   // speaker is a heading so the file can be skimmed by turn.
   function transcriptMarkdown() {
-    const header = `# Gemini Assistant — conversation of ${new Date().toLocaleString()}`;
+    const header = `# Gemini Assistant — conversation of ${new Date().toLocaleString()}\n\n_${transcriptSummary()}_`;
 
     const body = transcript.map(
       (message) => `### ${message.type === 'user' ? 'You' : 'Assistant'} · ${message.time}\n\n${message.text}`
