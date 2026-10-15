@@ -795,6 +795,11 @@
     followTail(stick || isUser);
   }
 
+  // How long the wait for the first word has gone on. A full analysis can
+  // sit on the dots for a while, and with nothing changing on screen a slow
+  // answer and a hung backend look exactly alike.
+  let typingTimer = null;
+
   function showTyping() {
     const row = document.createElement('div');
     row.className = 'msg-row';
@@ -802,9 +807,21 @@
     const botIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" fill="#534AB7" opacity="0.4"/><path d="M8 12h8M12 8v8" stroke="#c0b8ff" stroke-width="2" stroke-linecap="round"/></svg>`;
     row.innerHTML = `
       <div class="msg-icon bot">${botIcon}</div>
-      <div class="bubble bot" style="padding:0">
-        <div class="typing-indicator"><span></span><span></span><span></span></div>
+      <div>
+        <div class="bubble bot" style="padding:0">
+          <div class="typing-indicator"><span></span><span></span><span></span></div>
+        </div>
+        <div class="time typing-elapsed"></div>
       </div>`;
+
+    // Only after a few seconds: a quick answer never shows a counter.
+    const startedAt = Date.now();
+    const elapsed = row.querySelector('.typing-elapsed');
+    clearInterval(typingTimer);
+    typingTimer = setInterval(() => {
+      const seconds = Math.round((Date.now() - startedAt) / 1000);
+      if (seconds >= 3) elapsed.textContent = `Thinking… ${seconds}s`;
+    }, 1000);
 
     const stick = atBottom();
 
@@ -813,6 +830,8 @@
   }
 
   function removeTyping() {
+    clearInterval(typingTimer);
+    typingTimer = null;
     const el = document.getElementById('typing-row');
     if (el) el.remove();
   }
