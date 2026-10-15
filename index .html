@@ -132,6 +132,15 @@
     .time { font-size: 11px; color: #4a4a6a; margin-top: 4px; }
     .time.right { text-align: right; }
 
+    /* Where a reloaded conversation stops and the new visit begins. */
+    .restored-note {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 11px; color: #4a4a6a; margin: 4px 0;
+    }
+    .restored-note::before, .restored-note::after {
+      content: ''; flex: 1; border-top: 1px solid #2a2a45;
+    }
+
     /* Sits in the timestamp line rather than over the bubble: an answer is
        read far more often than it is copied, and a button hovering on the
        text would be in the way of the reading. */
@@ -1173,6 +1182,13 @@
         startBotMsg(message.time).bubble.textContent = message.text;
       }
     }
+
+    // A line under the old conversation, so it is clear which part was
+    // said on an earlier visit and where anything new will start.
+    const divider = document.createElement('div');
+    divider.className = 'restored-note';
+    divider.textContent = 'Restored from your last visit';
+    chatBox.appendChild(divider);
 
     // Each restored bubble is filled after it is placed, so the transcript
     // goes on growing underneath the view as it is rebuilt. A reload opens
