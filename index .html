@@ -1332,6 +1332,8 @@
   // greyed out until there is something to send, which also says why.
   function renderSendState() {
     sendBtn.disabled = !input.value.trim();
+    // A greyed-out button says "no" without saying why; hovering does.
+    sendBtn.title = sendBtn.disabled ? 'Type a message first' : 'Send (Enter)';
   }
 
   input.addEventListener('input', renderSendState);
