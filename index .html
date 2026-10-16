@@ -569,6 +569,15 @@
     saveBtn.title = saveBtn.disabled
       ? 'Nothing to save yet'
       : `Download this conversation (${transcript.length} messages) as a text file (Ctrl+S) — Shift-click or Ctrl+Shift+S for Markdown`;
+
+    // What Clear is about to throw away, counted, kept in step with the
+    // same transcript the save button reads.
+    const resetBtn = document.querySelector('.reset-btn');
+    if (resetBtn) {
+      resetBtn.title = transcript.length === 0
+        ? 'Start a new conversation (Alt+L)'
+        : `Start a new conversation (Alt+L) — clears ${transcript.length} message${transcript.length === 1 ? '' : 's'}`;
+    }
   }
 
   // How long the conversation is, said under the header so a saved file
