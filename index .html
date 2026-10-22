@@ -861,6 +861,14 @@
     button.title = 'Copy this answer (Alt+C copies the latest)';
     button.dataset.copy = 'answer';
 
+    // Counted on hover, not when the button is made: a streamed answer is
+    // still growing then. Worth knowing before pasting it into a ticket.
+    button.addEventListener('mouseenter', () => {
+      if (button.dataset.copy !== 'answer') return;
+      const words = bubble.textContent.trim().split(/\s+/).filter(Boolean).length;
+      button.title = `Copy this answer, ${words} word${words === 1 ? '' : 's'} (Alt+C copies the latest)`;
+    });
+
     button.addEventListener('click', async () => {
       const text = bubble.textContent.trim();
       if (!text) return;
