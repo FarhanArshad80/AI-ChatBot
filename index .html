@@ -829,7 +829,12 @@
     clearInterval(typingTimer);
     typingTimer = setInterval(() => {
       const seconds = Math.round((Date.now() - startedAt) / 1000);
-      if (seconds >= 3) elapsed.textContent = `Thinking… ${seconds}s`;
+      if (seconds >= 3) {
+        elapsed.textContent = `Thinking… ${seconds}s`;
+        // The stop button sits by the box; the counter is where the eye
+        // is while waiting.
+        elapsed.title = 'Taking too long? Press Esc to stop';
+      }
     }, 1000);
 
     const stick = atBottom();
