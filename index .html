@@ -680,6 +680,10 @@
     // "Online" is only as true as the last time it was asked; hovering says
     // when that was.
     statusText.title = `Last checked at ${now()}`;
+    // The header names the product; the backend says which model is
+    // actually behind it, which is what explains a change in the answers.
+    const headerTitle = document.querySelector('.header-title');
+    if (headerTitle) headerTitle.title = model ? `Answers come from ${model}` : '';
   }
 
   function showOffline() {
