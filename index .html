@@ -1336,7 +1336,7 @@
     const words = input.value.trim().split(/\s+/).filter(Boolean).length;
     charCount.title = pasteCut
       ? 'The pasted text was longer than a message can be, and the end of it was dropped'
-      : `${words.toLocaleString()} ${words === 1 ? 'word' : 'words'}`;
+      : `${words.toLocaleString()} ${words === 1 ? 'word' : 'words'} · ${(input.maxLength - length).toLocaleString()} characters left`;
   }
 
   input.addEventListener('paste', (e) => {
