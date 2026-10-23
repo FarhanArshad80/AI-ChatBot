@@ -356,11 +356,12 @@
   <!-- SUGGESTION CHIPS -->
   <!-- Buttons rather than spans, so Tab reaches them and Enter or Space
        sends one: a suggestion only a mouse can pick is not a suggestion
-       to anybody using the keyboard or a screen reader. -->
+       to anybody using the keyboard or a screen reader. Each sends on
+       click rather than filling the box, so hovering says so. -->
   <div class="suggestions" id="suggestions" role="group" aria-label="Suggested questions">
-    <button type="button" class="chip" onclick="useChip(this)">What can you do?</button>
-    <button type="button" class="chip" onclick="useChip(this)">Tell me a fun fact</button>
-    <button type="button" class="chip" onclick="useChip(this)">Help me write something</button>
+    <button type="button" class="chip" onclick="useChip(this)" title="Sends straight away">What can you do?</button>
+    <button type="button" class="chip" onclick="useChip(this)" title="Sends straight away">Tell me a fun fact</button>
+    <button type="button" class="chip" onclick="useChip(this)" title="Sends straight away">Help me write something</button>
   </div>
 
   <!-- INPUT -->
