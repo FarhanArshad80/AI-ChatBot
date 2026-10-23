@@ -689,7 +689,7 @@
   function showOffline() {
     statusDot.className = 'dot offline';
     statusText.textContent = 'Backend offline · retrying';
-    statusText.title = `Last tried at ${now()}`;
+    statusText.title = `Last tried at ${now()} · trying again every ${RECHECK_OFFLINE_MS / 1000}s`;
 
     if (!recheckTimer) {
       recheckTimer = setTimeout(() => {
