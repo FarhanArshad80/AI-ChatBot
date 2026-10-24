@@ -569,7 +569,10 @@
     saveBtn.disabled = transcript.length === 0;
     saveBtn.title = saveBtn.disabled
       ? 'Nothing to save yet'
-      : `Download this conversation (${transcript.length} messages) as a text file (Ctrl+S) — Shift-click or Ctrl+Shift+S for Markdown`;
+      : `Download this conversation (${transcript.length} messages, ${
+          // Words rather than bytes: how long the file is to read.
+          transcript.reduce((sum, m) => sum + String(m.text).trim().split(/\s+/).filter(Boolean).length, 0).toLocaleString()
+        } words) as a text file (Ctrl+S) — Shift-click or Ctrl+Shift+S for Markdown`;
 
     // What Clear is about to throw away, counted, kept in step with the
     // same transcript the save button reads.
