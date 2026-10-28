@@ -762,6 +762,10 @@
     return button;
   }
 
+  // Set while a saved conversation is put back, so its messages are not
+  // treated as having just been sent.
+  let restoringChat = false;
+
   function appendMsg(text, type, time = now(), retryText = '') {
     const isUser = type === 'user';
     const row = document.createElement('div');
@@ -778,6 +782,22 @@
         <div class="${bubbleClass}">${escHtml(text)}</div>
         <div class="time ${isUser ? 'right' : ''}">${time}</div>
       </div>`;
+
+    // A clock time says when, not how long ago, and in a long session the
+    // second is what gets worked out in the head. Only for messages made
+    // now: a restored one has its clock time and nothing to count from.
+    if (!restoringChat) {
+      const sentAt = Date.now();
+      const stamp = row.querySelector('.time');
+      stamp.addEventListener('mouseenter', () => {
+        const minutes = Math.floor((Date.now() - sentAt) / 60000);
+        stamp.title = minutes < 1
+          ? 'Just now'
+          : minutes < 60
+            ? `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+            : `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
+      });
+    }
 
     // Only on a failure that has a question behind it. "Stopped before the
     // answer started" is a choice somebody made, not something to offer back.
@@ -1224,6 +1244,7 @@
   if (transcript.length > 0) {
     document.getElementById('suggestions').style.display = 'none';
 
+    restoringChat = true;
     for (const message of transcript) {
       if (message.type === 'user') {
         appendMsg(message.text, 'user', message.time);
@@ -1231,6 +1252,7 @@
         startBotMsg(message.time).bubble.textContent = message.text;
       }
     }
+    restoringChat = false;
 
     // A line under the old conversation, so it is clear which part was
     // said on an earlier visit and where anything new will start.
