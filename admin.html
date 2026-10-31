@@ -527,7 +527,7 @@
       text-align: center;
     }
 
-    .chat-type-card:hover, .chat-type-card.selected {
+    .chat-type-card:hover, .chat-type-card.selected, .chat-type-card:focus-visible {
       border-color: var(--accent);
       background: rgba(124,109,250,0.1);
     }
@@ -789,22 +789,22 @@
         <div class="field">
           <label>Session Type</label>
           <div class="chat-type-grid">
-            <div class="chat-type-card selected" onclick="selectType(this,'plm')">
+            <div class="chat-type-card selected" role="button" tabindex="0" onclick="selectType(this,'plm')">
               <span class="icon">🔬</span>
               <div class="label">PLM Analysis</div>
               <div class="desc">Full lifecycle analysis</div>
             </div>
-            <div class="chat-type-card" onclick="selectType(this,'general')">
+            <div class="chat-type-card" role="button" tabindex="0" onclick="selectType(this,'general')">
               <span class="icon">💬</span>
               <div class="label">General Chat</div>
               <div class="desc">Open-ended conversation</div>
             </div>
-            <div class="chat-type-card" onclick="selectType(this,'compare')">
+            <div class="chat-type-card" role="button" tabindex="0" onclick="selectType(this,'compare')">
               <span class="icon">⚖️</span>
               <div class="label">Product Compare</div>
               <div class="desc">Compare two products</div>
             </div>
-            <div class="chat-type-card" onclick="selectType(this,'report')">
+            <div class="chat-type-card" role="button" tabindex="0" onclick="selectType(this,'report')">
               <span class="icon">📄</span>
               <div class="label">Report Mode</div>
               <div class="desc">Generate a formal report</div>
@@ -1398,6 +1398,16 @@
       document.getElementById("new-chat-msg").value = "";
       document.getElementById("new-chat-overlay").classList.add("open");
     }
+
+    // The cards are divs, so Enter and Space are wired up by hand to do what
+    // a click does; without this the session type could only be picked with
+    // a mouse.
+    document.addEventListener('keydown', e => {
+      const card = e.target.closest && e.target.closest('.chat-type-card');
+      if (!card || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      card.click();
+    });
 
     function selectType(el, type) {
       document.querySelectorAll('.chat-type-card').forEach(c => c.classList.remove('selected'));
