@@ -1051,6 +1051,14 @@
         `Showing ${first}–${last} of ${matchCount}`;
       document.getElementById("pager-prev").disabled = offset === 0;
       document.getElementById("pager-next").disabled = last >= matchCount;
+      // Where each button lands, so a long log can be walked without
+      // working out the page arithmetic from the range line.
+      document.getElementById("pager-prev").title = offset === 0
+        ? "Already showing the newest"
+        : `Records ${Math.max(offset - PAGE_SIZE, 0) + 1}–${offset}`;
+      document.getElementById("pager-next").title = last >= matchCount
+        ? "Already showing the oldest"
+        : `Records ${last + 1}–${Math.min(last + PAGE_SIZE, matchCount)}`;
     }
 
     function changePage(direction) {
