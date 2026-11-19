@@ -1049,4 +1049,8 @@ def delete_all_history():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # Off unless asked for. Flask's debug mode serves an interactive
+    # debugger that runs any code typed into it, so it must never be on
+    # by default for a server that might be reachable from elsewhere.
+    debug = os.getenv("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
+    app.run(debug=debug, port=5000)

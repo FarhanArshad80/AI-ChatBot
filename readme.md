@@ -52,4 +52,7 @@ PTHYONGEMNI/
    python app.py
    ```
 
+   Add `FLASK_DEBUG=1` to `.env` to turn on auto-reload and the debugger
+   while developing.
+
 5. Open `index.html` in your browser to chat, or `admin.html` for the admin dashboard.
