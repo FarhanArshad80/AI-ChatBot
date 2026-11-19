@@ -13,6 +13,7 @@ PTHYONGEMNI/
 ├── templates/           # Jinja2 / HTML template files
 ├── venv/                # Python virtual environment
 ├── .env                 # Environment variables (secrets)
+├── .env.example         # Template for .env
 ├── .gitignore           # Git ignore rules
 ├── admin.html           # Admin dashboard view
 ├── app.py               # Main Flask application server
@@ -38,13 +39,18 @@ PTHYONGEMNI/
    pip install -r requirements.txt
    ```
 
-3. Create a `.env` file in the project root:
+3. Copy the example environment file and fill in your keys:
 
-   ```env
-   GEMINI_API_KEY=your-gemini-api-key
-   SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_KEY=your-supabase-key
+   ```bash
+   cp .env.example .env
    ```
+
+   | Variable         | What it is                          |
+   | ---------------- | ----------------------------------- |
+   | `GEMINI_API_KEY` | Google Gemini API key               |
+   | `SUPABASE_URL`   | Your Supabase project URL           |
+   | `SUPABASE_KEY`   | Your Supabase API key               |
+   | `FLASK_DEBUG`    | `1` to enable debug mode (optional) |
 
 4. Start the server (it listens on port 5000):
 
