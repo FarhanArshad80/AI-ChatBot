@@ -19,6 +19,16 @@ from datetime import datetime, timedelta, timezone
 # 1. Load environment variables
 load_dotenv()
 
+# Without these the clients below fail with errors that do not name the
+# missing setting, so check them first and say exactly what to fix.
+REQUIRED_ENV = ("GEMINI_API_KEY", "SUPABASE_URL", "SUPABASE_KEY")
+missing_env = [name for name in REQUIRED_ENV if not os.getenv(name)]
+if missing_env:
+    raise SystemExit(
+        "Missing environment variables: " + ", ".join(missing_env)
+        + ". Copy .env.example to .env and fill them in."
+    )
+
 app = Flask(__name__)
 CORS(app)
 
