@@ -9,10 +9,8 @@ A Flask-based web application featuring an admin panel, dynamic HTML views, envi
 ```text
 PTHYONGEMNI/
 ├── .agents/             # Agent tools or automation scripts
-├── .vibe/               # Project configuration/meta files
-├── templates/           # Jinja2 / HTML template files
-├── venv/                # Python virtual environment
-├── .env                 # Environment variables (secrets)
+├── venv/                # Python virtual environment (created locally, not committed)
+├── .env                 # Environment variables (created locally, not committed)
 ├── .env.example         # Template for .env
 ├── .gitignore           # Git ignore rules
 ├── admin.html           # Admin dashboard view
