@@ -1,13 +1,13 @@
-# PTHYONGEMNI Web Application
+# AI Chatbot
 
-A Flask-based web application featuring an admin panel, dynamic HTML views, environment-based configuration, and virtual environment setup and realtime chat with the modals.
+A Flask chat server backed by Google Gemini, with a browser chat page that streams replies in real time and an admin dashboard for browsing, searching and exporting the conversation history stored in Supabase.
 
 ---
 
 ## 📁 Project Structure
 
 ```text
-PTHYONGEMNI/
+AI-ChatBot/
 ├── .agents/             # Agent tools or automation scripts
 ├── venv/                # Python virtual environment (created locally, not committed)
 ├── .env                 # Environment variables (created locally, not committed)
