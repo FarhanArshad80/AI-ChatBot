@@ -828,6 +828,47 @@
 
   <script>
     const API = "http://localhost:5000";
+
+    // Sent with every admin request. Only needed when the server sets
+    // ADMIN_TOKEN: the first refusal asks for it, and it is remembered in
+    // this browser so the dashboard does not ask again on every load.
+    const TOKEN_KEY = "admin-token";
+
+    function adminToken() {
+      try {
+        return localStorage.getItem(TOKEN_KEY) || "";
+      } catch {
+        return "";
+      }
+    }
+
+    async function adminFetch(url, options = {}, retried = false) {
+      const token = adminToken();
+      const headers = { ...(options.headers || {}) };
+
+      if (token) headers["X-Admin-Token"] = token;
+
+      const res = await fetch(url, { ...options, headers });
+
+      if (res.status !== 401 || retried) return res;
+
+      // Several requests go out together on load. Only the first refusal
+      // asks; the rest find a new token already saved and simply retry.
+      if (adminToken() === token) {
+        const entered = (window.prompt("This dashboard is protected. Enter the admin token:") || "").trim();
+
+        if (entered) {
+          try {
+            localStorage.setItem(TOKEN_KEY, entered);
+          } catch {
+            /* storage blocked - the token lasts for this request only */
+            return adminFetch(url, { ...options, headers: { ...headers, "X-Admin-Token": entered } }, true);
+          }
+        }
+      }
+
+      return adminToken() !== token ? adminFetch(url, options, true) : res;
+    }
     const PAGE_SIZE = 25;
     // Long enough to show a shape, short enough to read as a row of bars.
     const ACTIVITY_DAYS = 14;
@@ -864,7 +905,7 @@
       params.set('offset', offset);
 
       try {
-        const res = await fetch(`${API}/admin/history?${params}`);
+        const res = await adminFetch(`${API}/admin/history?${params}`);
         const data = await res.json();
 
         if (data.error) throw new Error(data.error);
@@ -896,7 +937,7 @@
       const panel = document.getElementById("activity");
 
       try {
-        const res = await fetch(`${API}/admin/stats?days=${ACTIVITY_DAYS}`);
+        const res = await adminFetch(`${API}/admin/stats?days=${ACTIVITY_DAYS}`);
         const data = await res.json();
 
         if (!res.ok || data.error) throw new Error(data.error || "unavailable");
@@ -975,7 +1016,7 @@
       const panel = document.getElementById("topics");
 
       try {
-        const res = await fetch(`${API}/admin/topics?days=${ACTIVITY_DAYS}`);
+        const res = await adminFetch(`${API}/admin/topics?days=${ACTIVITY_DAYS}`);
         const data = await res.json();
 
         if (!res.ok || data.error) throw new Error(data.error || "unavailable");
@@ -1201,10 +1242,9 @@
 
     /* ── EXPORT ── */
     // The search term rides along, so the file matches the rows on screen
-    // rather than quietly handing over the whole table. The download itself
-    // is a plain navigation — the endpoint sends it as an attachment, so
-    // the page stays where it is.
-    function exportCsv() {
+    // rather than quietly handing over the whole table. Fetched rather than
+    // navigated to, so the admin token can ride along in a header.
+    async function exportCsv() {
       if (matchCount === 0) {
         toast("Nothing to export yet", true);
         return;
@@ -1213,7 +1253,29 @@
       const params = filterParams();
       const query = params.toString();
 
-      window.location.href = `${API}/admin/history/export${query ? `?${query}` : ""}`;
+      try {
+        const res = await adminFetch(`${API}/admin/history/export${query ? `?${query}` : ""}`);
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        const disposition = res.headers.get("Content-Disposition") || "";
+        const name = disposition.match(/filename="?([^";]+)"?/)?.[1] || "chat-history.csv";
+        const link = document.createElement("a");
+
+        link.href = URL.createObjectURL(await res.blob());
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      } catch (err) {
+        toast(`Export failed: ${err.message}`, true);
+        return;
+      }
+
       // Every match, not just the page in view — the endpoint applies the
       // same filter without a range.
       toast(
@@ -1268,7 +1330,7 @@
     // Reads the error the server sent, when it sent one, so the toast can
     // say what went wrong rather than only that something did.
     async function write(url, options) {
-      const res = await fetch(url, options);
+      const res = await adminFetch(url, options);
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);

@@ -31,7 +31,8 @@ if missing_env:
     )
 
 app = Flask(__name__)
-CORS(app)
+# Content-Disposition is exposed so the admin page can name its CSV download.
+CORS(app, expose_headers=["Content-Disposition"])
 
 # 2. Initialize the Gemini Client
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
