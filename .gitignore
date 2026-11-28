@@ -14,3 +14,6 @@ env/
 # IDE files
 .vscode/
 .idea/
+
+# Local tool state
+.vibe/
