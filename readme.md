@@ -49,6 +49,7 @@ AI-ChatBot/
    | `SUPABASE_URL`   | Your Supabase project URL           |
    | `SUPABASE_KEY`   | Your Supabase API key               |
    | `FLASK_DEBUG`    | `1` to enable debug mode (optional) |
+   | `ADMIN_TOKEN`    | Protects the `/admin` endpoints (optional) |
 
 4. Start the server (it listens on port 5000):
 

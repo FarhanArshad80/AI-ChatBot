@@ -1,4 +1,5 @@
 import csv
+import hmac
 import io
 import json
 import math
@@ -355,6 +356,29 @@ def sse(payload):
     event open and nothing arrives until the next one lands.
     """
     return f"data: {json.dumps(payload)}\n\n"
+
+
+# ─────────────────────────────────────────────
+#  ADMIN ACCESS
+# ─────────────────────────────────────────────
+
+# The /admin routes can read, rewrite and delete every stored conversation.
+# Open by default so a local demo keeps working, but once ADMIN_TOKEN is set
+# each admin request must carry it in the X-Admin-Token header.
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+
+
+@app.before_request
+def require_admin_token():
+    if not ADMIN_TOKEN or not request.path.startswith("/admin"):
+        return None
+    # CORS preflights carry no custom headers; let flask-cors answer them.
+    if request.method == "OPTIONS":
+        return None
+    sent = request.headers.get("X-Admin-Token", "")
+    if not hmac.compare_digest(sent.encode(), ADMIN_TOKEN.encode()):
+        return jsonify({"error": "Admin token missing or wrong"}), 401
+    return None
 
 
 # ─────────────────────────────────────────────
